@@ -9,14 +9,34 @@
 %%%%%%%%%%%%%%%%%%%%%%%%
 latmin = 34; latmax = 38;
 lonmin = -122; lonmax = -117;
-center_fraction = .3; %Change this to a smaller value to require the center of the modis swath to pass through a smaller "corridor"
-count_criterion = 1; %The minimum number of swath centers that have to fall within the center corridor.
+center_fraction = 0.3; %Change this to a smaller value to require the center of the modis swath to pass through a smaller "corridor"
+count_criterion = 1; %The minimum number of row centers that have to fall within the center corridor.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 file = 'MOD04_L2.A*.hdf';
-directory = '/Volumes/share/GROUP/SAT/MODIS/MOD04_L2/Cont_US_2013'; %This will need changed if your files are elsewhere, clearly.
+directory = '/Volumes/share/GROUP/SAT/MODIS/MOD04_L2/Cont_US_2012'; %This will need changed if your files are elsewhere, clearly. Will be overridden if refining files
 %%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%% Save the criteria used in a data structure for future reference %%%%%
+%%%%% If we have an old file loaded, asked the user if they want to refine
+%%%%% it or start a new file.  Assume 'yes' if no response given.
+REFINE = 0;
+if exist('SwathCriteria','var') && exist('useful_files','var')
+    answer = input('Original file detected. Refine this file <y/n>? [Y]','s');
+    if isempty(answer)
+        answer = 'y';
+    end
+    if strcmpi(answer,'y'); REFINE = 1; end
+end
+if REFINE
+    original_file = SwathCriteria.Filename;
+    directory = SwathCriteria.MOD04_Directory;
+    clear SwathCriteria
+    SwathCriteria = struct('OriginalFile',original_file,'Latbdy',[latmin latmax],'Lonbdy',[lonmin lonmax], 'CenterFraction',center_fraction,'RowCountReq',count_criterion,'MOD04_Directory',directory);
+else
+    SwathCriteria = struct('Latbdy',[latmin latmax],'Lonbdy',[lonmin lonmax], 'CenterFraction',center_fraction,'RowCountReq',count_criterion,'MOD04_Directory',directory);
+end
 
 %%%%% Calculate the "corridor" if center_fraction not equal to 1 %%%%%
 if center_fraction ~= 1
@@ -30,15 +50,30 @@ else
     lon_lower_bdy = lonmin; lon_upper_bdy = lonmax;
 end
 
-cd(directory);
-files = dir(fullfile(directory,file)); %Find all files matching the pattern "file" in the given directory
-n = length(files);
+if REFINE
+    fprintf('Refining swaths from %s\n',original_file);
+    files = useful_files;
+    n = length(files);
+    clear useful_files
+    cd(directory);
+else
+    cd(directory);
+    files = dir(fullfile(directory,file)); %Find all files matching the pattern "file" in the given directory
+    n = length(files);
+end
 
 useful_files = {}; %Create empty cell array to track the file names we want
 cell_count = 1; %Counter to keep track of what row we should be adding to
+
 for a=1:n
     if mod(a,10)==0; fprintf('Checking file %u of %u', a, n);disp(' '); end
-    filename = files(a).name;
+    if REFINE
+        filename = files{a};
+    else
+        filename = files(a).name;
+    end
+    if str2double(filename(15:17)) > 370
+    else
     hdfi = hdfinfo(filename);
     modis_lon = hdfread(hdfi.Vgroup(1).Vgroup(1).SDS(1));
     modis_lat = hdfread(hdfi.Vgroup(1).Vgroup(1).SDS(2));
@@ -61,5 +96,18 @@ for a=1:n
         useful_files{cell_count,1} = filename; %#ok<SAGROW>
         cell_count = cell_count+1;
     end
+    end
     
+end
+savefile = input('Enter the name to save the results as: ','s');
+while true
+    if ~strcmp(savefile((end-3):end),'.mat'); savefile = [savefile '.mat']; end %Ensure that the filename ends in '.mat'
+    if exist(fullfile(pwd,savefile),'file')==0
+        SwathCriteria.Filename = savefile;
+        save(savefile,'useful_files','SwathCriteria');
+        fprintf('File saved as %s\n',fullfile(pwd,savefile));
+        break
+    else
+        savefile = input('File already exists. Enter a different name: ','s');
+    end
 end
