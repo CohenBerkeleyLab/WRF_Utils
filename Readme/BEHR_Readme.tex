@@ -63,7 +63,7 @@
 
 \section{Version Control}
 	
-	The core code for BEHR is contained in a Git repository on our group's Synology DS1813+ NAS file server.  As of \today, this server is located at IP address \textbf{128.32.208.13}.  Currently to connect to the server, your computer needs to also be on the 128 network, which means an ethernet connection to one of the wall ports or that you access wifi via the RC-Lab network.  Credentials are:
+	The core code for BEHR is contained in a Git repository on our group's Synology DS1813+ NAS file server.  As of \today, this server is located at IP address \textbf{128.32.208.13}.  To connect to this server, your computer will need to have a UC Berkeley IP address.  Connecting through an ethernet wall port is the recommended method, but you can also access it by connecting to the RC-Lab wifi network or from anywhere as long as you are connected to the Berkeley VPN.  Credentials are:
 	
 	\vspace{12pt}
 	Username: RCCohenLab
@@ -103,25 +103,151 @@
 	\end{enumerate}
 
 \section{File structure}
+	This section describes the key files of code in BEHR to make it run.  Instructions for running it contained within this section are predicated on the idea that you're running BEHR on a desktop computer.  For instructions on running it on a cluster, see \S\ref{sec:Cluster}.
+
 	\subsection{Read data}
 	
-	The first step in running BEHR on new data is to read the NASA files into Matlab.  This is done using the {\lstinline[breaklines=true]|read_omno2_v_aug2012.m|} file.  This is a Matlab script, ergo it is not called with any arguments; changes need to be made to the code itself. The ``{\lstinline[breaklines=true]|v_aug2012|}'' part of the name indicates that this file is intended to work with OMNO2 v. 3, which was released in Aug. 2012 (or at least the technical specs for it were).  This script serves several functions: 
+	The first step in running BEHR on new data is to read the NASA files into Matlab.  This is done using the {\lstinline[breaklines=true]|read_omno2_v_aug2012.m|} file.  This is a Matlab function, but it is meant to be run from the editor without any input arguments. All of the properties that need to be set are coded into the function.  However, it can accept start and end dates as inputs to the function, which can be useful to run it in batches.
+	
+	 The ``{\lstinline[breaklines=true]|v_aug2012|}'' part of the name indicates that this file is intended to work with OMNO2 v. 3, which was released in Aug. 2012 (or at least the technical specs for it were).  
+	 
+	 This function serves several purposes: 
 		\begin{enumerate}
  		 \item It reads all relevant variables from OMNO2 files into Matlab.
 		 \item It averages the MYD06\_L2 cloud product data to each OMI pixel.
 		 \item It averages the MCD43C3 albedo product data to each OMI pixel.
 		 \item It averages the GLOBE terrain data to each OMI pixel, converting from altitude to terrain pressure.
 		\end{enumerate}
-	For each day that this script processes, a {\lstinline[breaklines=true]|.mat|} file is saved with a single variable, {\lstinline[breaklines=true]|Data|}.  This variable is a data structure, in which each OMI swath for that day is stored under a different top-level index (i.e., {\lstinline[breaklines=true]|Data(1)|} refers to the first swath of that day, and {\lstinline[breaklines=true]|Data(2)|} the second, etc.).  These data structures contain the data read from the OMNO2, MODIS, and GLOBE files as matrix fields.  Each element of the matrix corresponds to an OMI pixel.
+	For each day that this function processes, a {\lstinline[breaklines=true]|.mat|} file is saved with a single variable, {\lstinline[breaklines=true]|Data|}.  This variable is a data structure, in which each OMI swath for that day is stored under a different top-level index (i.e., {\lstinline[breaklines=true]|Data(1)|} refers to the first swath of that day, and {\lstinline[breaklines=true]|Data(2)|} the second, etc.).  These data structures contain the data read from the OMNO2, MODIS, and GLOBE files as matrix fields.  Each element of the matrix corresponds to an OMI pixel.
 	
 	Production (i.e. not testing) files output from this script will generally have the name {\lstinline[breaklines=true]|OMI_SP_yyyymmdd.mat|}.  Filenames with additional information are generally testing files I have created in the course of various debugging runs, and should not be used to produce \ce{NO2} data.
 	
-	To run this file, enter the latitude and longitude boundaries for the area to retrieve (any OMI pixels outside this area will be discarded) and the date range to process.  The first time you run this file, you may need to edit the paths to the various files; follow the instructions in the comments to identify which directory corresponds to which type of file.  To specify a path to a folder on the lab server, Mac users should begin the path with {\lstinline[breaklines=true]|/Volumes|}.  PC users: I can't help you. Sorry! (Best guess, the path might need to start with the server IP address.)
+	To run this file, enter the latitude and longitude boundaries for the area to retrieve (any OMI pixels outside this area will be discarded) and the date range to process.  The first time you run this file, you may need to edit the paths to the various files; follow the instructions in the comments to identify which directory corresponds to which type of file.  To specify a path to a folder on the lab server, Mac users should begin the path with {\lstinline[breaklines=true]|/Volumes|}.  PC users: the path should begin with the letter you chose when mounting the volume.
 	
-	Should a new version of the OMNO2 files be released, lines 192--325 (dealing with various H5 loading functions to read OMNO2) might need updated to reflect any change in dataset names in the OMNO2 he5 files.  The MYD06 and MCD43C3 files are loaded further down in the code; follow the comments. 
+	Should a new version of the OMNO2 files be released, lines 293 and 333--358 (dealing with various H5 loading functions to read OMNO2) might need updated to reflect any change in dataset names in the OMNO2 he5 files.  The MYD06 and MCD43C3 files are loaded further down in the code; follow the comments. 
 	
 	\subsection{Recalculate AMF and Tropospheric Column}
+	
+		This is handled by the \lstinline[breaklines=true]|BEHR_main.m| function in \path{BEHR/BEHR_Main/}. Compared to the reading function, this is rather short, but it is the key component of BEHR. It goes through several steps:
+		\begin{enumerate}
+			\item It uses the TOMRAD look up table from NASA's OMNO2 product to generate box AMFs for each pixel, but using MODIS albedo and GLOBE terrain pressure.  This is done for the clear and cloudy cases.
+			\item Reads in \ce{NO2} profiles generated from WRF-Chem and bins them to each OMI pixel.
+			\item Calculates the full AMFs by combining the WRF profiles and box AMFs.
+			\item The new AMF is then applied to the tropospheric slant column, found by multiplying the NASA AMF with their vertical column.
+			\item Finally selected data fields are gridded onto a $0.05^\circ \times 0.05^\circ$.  
+		\end{enumerate}
+		
+		The resulting outputs are saved in BEHR files that contain two variables: \lstinline[breaklines=true]|Data| contains the original OMI pixel data, with the new BEHR AMF and \ce{NO2} column density appended. \lstinline[breaklines=true]|OMI| contains the variables gridded to $0.05^\circ \times 0.05^\circ$. Both retain the same structure wherein the top-level index represents a single swath.  However, in \lstinline[breaklines=true]|OMI|, every swath's grid covers the entire region of interest, and cells with no data for that swath have a fill value.
+		
+		You may wonder that the grid is smaller than the regular OMI pixels; this technique is called \emph{oversampling} and allows us to take advantage of the fact that the OMI pixels do not overlap exactly day-to-day to obtain an effective resolution greater than the pixel size if we average over longer time periods.
+		
+		This function should require minimal upkeep even in the event a new NASA product is released.
+		
 	\subsection{Weight pixels and map}
+
+\section{Running BEHR on a compute cluster} \label{sec:Cluster}
+	\subsection{BEHR in Matlab}
+	\subsubsection{Parallelization}
+		Starting in Jan 2015, the main BEHR code (\lstinline[breaklines=true]|read_omno2_v_aug2012.m| and \lstinline[breaklines=true]|BEHR_main.m|) had simple parallelization added to the code body.  This is only intended to be used when the code is run on a cluster because in order to run operations in parallel, Matlab must send all relevant variables from the main instance to the parallel ``workers'' actually executing the code.  Given the size of the variables routinely used in BEHR, this communication overhead can result in overall slower work than a serial execution if too few cores are used.  As of 29 Jan 2015, I have yet to run any sort of rigorous benchmarking tests, but anecdotally, running BEHR in parallel with only 2 cores seemed to result in a slower execution than running it in serial.
+		
+		There were numerous small changes to the code to enable parallelization, most importantly, the \lstinline[breaklines=true]|for| loop over days was replaced with a \lstinline[breaklines=true]|parfor| loop. \lstinline[breaklines=true]|parfor| in Matlab allows multiple iterations of a for loop to run in parallel, and automatically handles the distribution of data.  Compared to an \lstinline[breaklines=true]|spmd| block, we give up control over how and when the data is distributed in exchange for Matlab handling it automatically.
+		
+		Compared to previous versions of BEHR, most of the changes in the code (too numerous to list individually) were mainly to allow Matlab to ``slice'' variables appropriately for inclusion in a \lstinline[breaklines=true]|parfor| loop.  The change that is significant for the user is that a number of global variables were added to control both the action of the parallel loop and the paths to data.  
+
+		The reason these variables were made global variables instead of inputs to the function was to allow them to be set in a run script once. This makes the run script more ``bash like'' (programs compiled from a shell like bash---including GEOS-Chem and WRF-Chem---often reference environmental variables to determine how they compile).  
+		
+		The two variables controlling the action of the parallel loop are \lstinline[breaklines=true]|onCluster| and \lstinline[breaklines=true]|numThreads|. \lstinline[breaklines=true]|onCluster| should be set to true in a run script whenever the script is being executed on a cluster.  \lstinline[breaklines=true]|numThreads| is, by default, set up in the run script template to take its value from an environmental variable, \lstinline[breaklines=true]|MATLAB_NUM_THREADS| set in the bash shell that calls the Matlab instance running it.  This was done because it is possible to set this environmental variable by referencing another that relates directly to how many CPU cores are available.  See the example in \S\ref{sec:ClusterQueueMatlab} for an example.
+		
+		The path variables are all defined in the .m files, and are set up such that if \lstinline[breaklines=true]|onCluster| is true, the functions will look to global variables setup in the run script for those paths. (If any aren't defined, an error is thrown.)  This is so that you only have to edit the run script to use BEHR on a cluster.  If \lstinline[breaklines=true]|onCluster| is false, the function looks to the paths coded into the functions.
+
+	\subsubsection{Running it}
+		The code was set up to be executing using a ``runscript,'' which is a Matlab script file that can be called from the command line as:
+\begin{lstlisting}
+matlab -nosplash -nodisplay -r "run(`runscript.m')"
+\end{lstlisting}
+		The argument \lstinline[breaklines=true]|-nosplash| tells Matlab not to show the splash screen on startup, and \lstinline[breaklines=true]|-nodisplay| tells Matlab that it shouldn't start the GUI interface. (Since we're working from the command line, we don't need it, and we don't want it to try to open it if we can't see it anyway.) \lstinline[breaklines=true]|-r "..."| tells Matlab to execute the command given in quotation marks as soon as it starts up.  In this case, that is to execute the runscript in the current directory.
+		
+		A template for a BEHR runscript can be found in \path{BEHR/Run_Scripts/}. You'll notice that the runscript template does several things:
+		\begin{enumerate}
+			\item Sets the global variable \lstinline[breaklines=true]|onCluster| to \lstinline[breaklines=true]|true|.  This lets any scripts that use that variable know that it is running on a cluster and should activate any parallel elements in the code.
+			\item Sets the variable numThreads.  By default this is set to the variable of the environmental variable \lstinline[breaklines=true]|$MATLAB_NUM_THREADS| from the shell that executed this instance of Matlab. More on why this is preferable below.
+			\item Detects any active parallel pools and shuts them down before exiting.
+			\item Everything is wrapped in a \lstinline[breaklines=true]|try-catch| block that will, in the event of an error, prints the error information to the console, closes any active parallel pools, and exits with status code $> 0$.
+		\end{enumerate}
+
+		This is a very general template, so you can use it to call any function you parallelize using the global variables \lstinline[breaklines=true]|onCluster| and \lstinline[breaklines=true]|numThreads|.  For BEHR, you'll also have to set all the global path variables for \lstinline[breaklines=true]|read_omno2_v_aug2012.m| and \lstinline[breaklines=true]|BEHR_main| in the runscript.
+		
+	\subsubsection{Submitting to the cluster queue} \label{sec:ClusterQueueMatlab}
+		Like any job you want to run on a computing cluster, you'll need to write a shell script that is put into the queue for the cluster.  Since the Savio cluster that I use operates with the SLURM scheduler, this section will be written from the point of view of submitting to SLURM using the bash shell. (I assume that if you use tcsh or another shell that you know what you're doing well enough to make the necessary adjustments.) Below will be an example submit script, each important line will be described afterward.
+
+% Only for this listings environment do we want line numbers
+\lstset{numbers=left}
+\begin{lstlisting}
+#!/bin/bash
+#
+# Job Name:
+#SBATCH --job-name=BEHR
+#
+# Partition:
+#SBATCH --partition=savio
+#
+# Account:
+#SBATCH --account=ac_aiolos
+# 
+# QoS:
+#SBATCH --qos=condo_aiolos
+#
+# Number of nodes and processors per node
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=20
+#
+# Wall clock limit:
+#SBATCH --time=24:00:00
+#
+## Run command
+export MATLAB_NUM_THREADS=$((SLURM_NTASKS_PER_NODE-1))
+cd /global/home/users/<me>/<behr_run_dir>
+module load matlab
+matlab -nosplash -nodisplay -logfile "runlog.txt" -r "run('runscript_behr.m')"
+MATLAB_EXIT=$?
+exit $MATLAB_EXIT
+\end{lstlisting}
+\lstset{numbers=none}
+
+\bgroup
+\def\arraystretch{1.5}
+\begin{longtabu}{lX}
+	\textbf{Line 1} & Lines starting with a \lstinline[breaklines=true]|#!| are called a \emph{shebang} in bash-speak, this one tells the computer to run the script using the bash shell.  Including this is a safety measure; it ensures the script is always run using bash if another shell interpreter is active. \\
+	\textbf{Line 2} & A \lstinline[breaklines=true]|#| indicates a comment in bash \\
+	\textbf{Line 4} & The \lstinline[breaklines=true]|#SBATCH| at the beginning of this line tells the SLURM scheduler that a setting is being passed. Bash ignores it because of the \lstinline[breaklines=true]|#|, but SLURM does not. In this case, we're setting the name of the job that will appear in the queue. \\
+	\textbf{Line 7} & Tells SLURM which partition of nodes to run on.  We use ``savio'' unless we need lots of RAM. \\
+	\textbf{Line 10} & The SLURM account that would be charged for running (I think). Ron is under the ``aiolos'' account; the ``ac'' indicates that it is the account. \\
+	\textbf{Line 13} & ``QoS'' determines what rules the job is run under and how compute time is charged. The part after the underscore will always be the account, ``aiolos.''  The part before the underscore determines the rules. ``condo'' means that we can use up to 8 nodes at a time and won't be charged for it. \\
+	\textbf{Line 16} & How many nodes to to. A node is the computing unit of the cluster---each node will only run one job at a time. \\
+	\textbf{Line 17} & How many cores to use on each node.  Each node has two 10-core processors for 20 cores maximum per node. \\
+	\textbf{Line 20} & How long to let the job run before forcing it to quit.  Here, we set it to 24 hours.  It's good practice to do this to prevent a job from running indefinitely. \\
+	\textbf{Line 23} & \lstinline[breaklines=true]|export| in bash means ``set this as an environmental variable'' which programs executed from this shell can access.  The \lstinline[breaklines=true]|$(( ))| in bash means to evaluate an arithmetic expression and return the result.  So here we're saving one less than the number of tasks per node in the \lstinline[breaklines=true]|MATLAB_NUM_THREADS| variable.  I do this to be a little bit careful to leave a core free for the main Matlab instance, although I don't know if that's strictly necessary. \\
+	\textbf{Line 24} & Change to our run directory (just in case the job starts somewhere else). \lstinline[breaklines=true]|<me>| and \lstinline[breaklines=true]|<behr_run_dir>| are just placeholders. \\
+	\textbf{Line 25} & Savio organizes applications by modules, here load the matlab module to be able to run matlab. \\
+	\textbf{Line 26} & Execute matlab with command line arguments. The only new one is \lstinline[breaklines=true]|-logfile "runlog.txt"| which saves all Matlab command window output to the file runlog.txt. One mistake to avoid is including the \lstinline[breaklines=true]|-nojvm| flag, because (apparently) the parallel computing toolbox needs Java to work.  Don't ask me why.\\
+	\textbf{Line 27} & The \lstinline[breaklines=true]|$?| is the last given exit code. We save this to a variable... \\
+	\textbf{Line 28} & ...and then exit this script with that exit code.  This will let you know if the script succeeded or failed.
+\end{longtabu}
+\egroup
+
+		If this script is named e.g. \lstinline[breaklines=true]|matrun| then typing \lstinline[breaklines=true]|sbatch matrun| on the cluster will submit it to run.  You can check the status of all jobs with \lstinline[breaklines=true]|squeue|.
+		
+		The reason that we use the variable \lstinline[breaklines=true]|MATLAB_NUM_THREADS| to pass the number of available cores to the run script is to be a little careful about not causing Matlab to request more cores than we've set aside.  By deriving \lstinline[breaklines=true]|MATLAB_NUM_THREADS| from the SLURM variable indicating the number of cores to be used per node, we ensure that a change to the SLURM settings is propagated through to our Matlab instance without any intervention on our part.
+		
+	\subsection{Resources}
+	\begin{enumerate}
+		\item Matlab documentation on parfor loops: \url{http://www.mathworks.com/help/distcomp/parallel-for-loops-parfor.html}
+		\item Matlab parfor loops, classification of variables: \url{http://www.mathworks.com/help/distcomp/classification-of-variables-in-parfor-loops.html}
+		\item The High Performance Computer (HPC) User Guide: \url{http://research-it.berkeley.edu/services/high-performance-computing/user-guide}
+		\item SLURM Documentation: \url{https://computing.llnl.gov/linux/slurm/documentation.html}
+		\item List of SLURM parameters (i.e., what can be set in the bash run script on the lines beginning with \lstinline[breaklines=true]|#SBATCH|: \url{https://computing.llnl.gov/linux/slurm/sbatch.html}
+	\end{enumerate}
+		
 	
 
 	
@@ -129,13 +255,15 @@
 	\subsection{Verification}
 	
 \section{Changelog}
+	A notation of (dev) after the version number indicates that the full archive of BEHR data was never produced using that version (i.e. ``development only'').
+
 \bgroup
 \def\arraystretch{1.5}
 	\begin{table}[h]
 		\begin{longtabu} to \textwidth{| l | l | X |} \hline
 			Date 		& 	Version Number		&	Description \endhead \hline
 			2012		&	2.0A				&	Original version by A. Russell, using OMI SP 2 with MODIS cloud and albedo, GLOBE terrain database, and WRF-Chem profiles (12 km for full US). \\ \hline
-			May 2013	&	2.0B				&	Version (unvalidated at this point) updated by J. Laughner to use OMI SP 2 and MODIS cloud collection 6.  Albedo, terrain products, and WRF-Chem profiles unchanged.  MODIS and GLOBE data import now done directly by {\lstinline[breaklines=true]|read_omno2_v_aug2012|}, ``preprocessing'' of these files into Matlab .mat files no longer necessary. \\ \hline
+			May 2013	&	2.0B	 (dev)		&	Version (unvalidated at this point) updated by J. Laughner to use OMI SP 2 and MODIS cloud collection 6.  Albedo, terrain products, and WRF-Chem profiles unchanged.  MODIS and GLOBE data import now done directly by {\lstinline[breaklines=true]|read_omno2_v_aug2012|}, ``preprocessing'' of these files into Matlab .mat files no longer necessary. \\ \hline
 		\end{longtabu}
 	\end{table}
 \egroup
