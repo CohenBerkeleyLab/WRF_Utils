@@ -137,9 +137,9 @@ for d=1:n_days
         
         % Check that the variables have the same dimensions as the first
         % day.
-        if (ndims(var) ~= numel(var_sizes{a}) && var_sizes{a}(end) > 1) || (var_sizes{a}(end) > 1 && any(size(var) ~= var_sizes{a}))
-            E.callError('import','%s in the file %s is not the same size as in the first .nc file (%s vs. %s in the first)', varnames{a}, filenames{a}, mat2str(size(var)), mat2str(var_sizes{a}));
-        end
+        %if (ndims(var) ~= numel(var_sizes{a}) && var_sizes{a}(end) > 1) || (var_sizes{a}(end) > 1 && any(size(var) ~= var_sizes{a}))
+        %    E.callError('import','%s in the file %s is not the same size as in the first .nc file (%s vs. %s in the first)', varnames{a}, filenames{a}, mat2str(size(var)), mat2str(var_sizes{a}));
+        %end
         varargout{a} = cat(var_dims(a), varargout{a}, var);
     end
     fprintf('\n');
