@@ -1,4 +1,4 @@
-function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dims )
+function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dims, DEBUG_LEVEL )
 %READ_WRF_VARS Reads WRF_BEHR .nc files
 %   This function will read in arbitrary variables from WRF_BEHR .nc files
 %   (the result of processing raw wrfout files using
@@ -70,6 +70,12 @@ if ~exist('force_dims','var')
 elseif ~isscalar(force_dims) || (~isnumeric(force_dims) && ~islogical(force_dims))
     E.badinput('force_dims, if given, must be a scalar logical or number than can be converted to a logical')
 end
+
+if ~exist('DEBUG_LEVEL','var')
+    DEBUG_LEVEL = 1;
+elseif ~isscalar(DEBUG_LEVEL) || ~isnumeric(DEBUG_LEVEL)
+    E.badinput('DEBUG_LEVEL must be a scalar')
+end
     
 %%%%%%%%%%%%%%%%%%%%%%%
 %%%% MAIN FUNCTION %%%%
@@ -130,9 +136,13 @@ end
 % in varargout, concatenating as we go.
 
 for d=1:n_days
-    fprintf('Reading day %d of %d: ', d, n_days);
+    if DEBUG_LEVEL > 0
+        fprintf('Reading day %d of %d: ', d, n_days);
+    end
     for a=1:numel(varnames)
-        fprintf('%s ', varnames{a});
+        if DEBUG_LEVEL > 0 
+            fprintf('%s ', varnames{a});
+        end
         var = ncread(fullfile(filepath, filenames{d}),varnames{a});
         
         % Check that the variables have the same dimensions as the first
@@ -142,7 +152,9 @@ for d=1:n_days
         %end
         varargout{a} = cat(var_dims(a), varargout{a}, var);
     end
-    fprintf('\n');
+    if DEBUG_LEVEL > 0
+        fprintf('\n');
+    end
 end
 
 end

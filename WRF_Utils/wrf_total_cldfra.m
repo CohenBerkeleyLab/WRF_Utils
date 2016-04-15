@@ -1,4 +1,4 @@
-function [ new_info ] = wrf_total_cldfra( ncdf_file, overwrite )
+function [ new_info ] = wrf_total_cldfra( ncdf_file, overwrite, DEBUG_LEVEL )
 %[ NEW_INFO ] = WRF_TOTAL_CLDFRA( NCDF_FILE, OVERWRITE ) Computes total column cloud fraction
 %   [ NEW INFO ] = WRF_TOTAL_CLDFRA( NCDF_FILE ) The first argument can
 %   either be a path to the netCDF file to compute total cloud fraction for
@@ -11,6 +11,13 @@ function [ new_info ] = wrf_total_cldfra( ncdf_file, overwrite )
 %   argument allows you to specify how to save the file; 'y' will append
 %   the variable to the original file, 'n' will create a new copy, and 'i'
 %   (default) will prompt before appending.
+%
+%   [ CLDFRA_TOT ] = WRF_TOTAL_CLDFRA( NCDF_FILE, 'r' ) will cause
+%   WRF_TOTAL_CLDFRA to return the cloud fraction directly, which is much
+%   faster than writing to the netCDF file usually.
+%
+%   WRF_TOTAL_CLDFRA( NCDF_FILE, OVERWRITE, 0 ) will disable debugging
+%   messages.
 %
 %   WRF-Chem outputs cloud fraction on a level-by-level basis. This is
 %   great for radiative transfer modeling or other applications where we
@@ -33,7 +40,9 @@ function [ new_info ] = wrf_total_cldfra( ncdf_file, overwrite )
 %   Josh Laughner <joshlaugh5@gmail.com> 16 Mar 2016
 
 E = JLLErrors;
-DEBUG_LEVEL = 1;
+if ~exist('DEBUG_LEVEL','var')
+    DEBUG_LEVEL = 1;
+end
 
 %%%%%%%%%%%%%%%%%
 %%%%% INPUT %%%%%
@@ -63,14 +72,14 @@ if sum(cc) ~= 1
 end
 zz = strcmp('zlev',{ni.Variables.Name});
 if sum(zz) ~= 1
-    E.badinput('Either cannot find CLDFRA in the variables in NCDF_FILE or this matched multiple variables. Is this file the result of running slurmrun_wrf_output.sh (see BEHR/WRF_Utils folder)?')
+    E.badinput('Either cannot find zlev in the variables in NCDF_FILE or this matched multiple variables. Is this file the result of running slurmrun_wrf_output.sh (see BEHR/WRF_Utils folder)?')
 end
 
 if ~exist('overwrite','var')
     overwrite = 'i';
 else
     overwrite = lower(overwrite);
-    allowed_overwrite = {'i','y','n'};
+    allowed_overwrite = {'i','y','n','r'};
     if ~ismember(overwrite,allowed_overwrite)
         E.badinput('OVERWRITE must be one of %s (if given)',strjoin(allowed_overwrite,', '));
     end
@@ -111,10 +120,13 @@ for t=1:size(cldfra,4)
 end
 
 if strcmp(overwrite,'i')
-    overwrite = ask_multichoice('Do you wish to append the total cldfrac to the existing file?', {'y','n'});
+    overwrite = ask_multichoice('Do you wish to append the total cldfrac to the existing file? Or return the total cloudfrac directly?', {'y','n','r'});
 end
 
-if strcmp(overwrite,'n')
+if strcmp(overwrite,'r')
+    new_info = cldfra_total;
+    return
+elseif strcmp(overwrite,'n')
     % Figure out what to name the file so as to not overwrite anything
     [fpath, fname, fext] = fileparts(ni.Filename);
     fname_raw = fname;
@@ -131,7 +143,14 @@ else
 end
 
 % Create the new variable in the file and write the data to it.
-nccreate(save_file,'CLDFRA_TOT','Dimensions',{'west_east','south_north','hour_index'});
+ncdims = {ni.Dimensions.Name};
+if ismember('hour_index',ncdims)
+    nccreate(save_file,'CLDFRA_TOT','Dimensions',{'west_east','south_north','hour_index'});
+elseif ismember('Time',ncdims)
+    nccreate(save_file,'CLDFRA_TOT','Dimensions',{'west_east','south_north','Time'});
+else
+    E.callError('unknown_dimension','The time dimensions of the file %s is unknown',ni.Filename);
+end
 ncwrite(save_file,'CLDFRA_TOT',cldfra_total);
 ncwriteatt(save_file,'CLDFRA_TOT','description','Estimated overall column cloud fraction');
 ncwriteatt(save_file,'CLDFRA_TOT','units','unitless fraction');
