@@ -1,0 +1,29 @@
+#include atoms_red
+#include ./r2smh.spc
+#include ./r2smh.eqn
+
+
+
+
+#INLINE F90_RATES
+REAL(KIND=dp) FUNCTION k46( TEMP, C_M )
+    REAL(KIND=dp), INTENT(IN) :: temp, c_m
+    REAL(KIND=dp) :: k0, k2, k3 
+
+   k0=2.4E-14_dp * EXP(460._dp/TEMP)
+   k2=2.7E-17_dp * EXP(2199._dp/TEMP)
+   k3=6.5E-34_dp * EXP(1335._dp/TEMP) * C_M
+
+   k46=k0+k3/(1+k3/k2)
+
+
+END FUNCTION k46
+
+REAL(KIND=dp) FUNCTION ko1d(TEMP, C_M)
+    REAL(KIND=dp), INTENT(IN) :: temp, c_m
+    REAL(KIND=dp) :: kN, kO
+    kN = 0.78084_dp * C_M * 1.8E-11_dp * EXP(107._dp/TEMP)
+    kO = 0.20946_dp * C_M * 3.2E-11_dp * EXP(67._dp/TEMP)
+    ko1d=kN+kO
+END FUNCTION ko1d
+#ENDINLINE 
