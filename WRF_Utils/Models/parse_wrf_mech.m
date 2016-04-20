@@ -61,7 +61,8 @@ isfixed(i:end) = [];
 end
 
 function J = construct_mechanism(eqn_file, species)
-J = cellmat(numel(species),1,1,1);
+J = cell(numel(species),1);
+J(:) = {0};
 
 fid = fopen(eqn_file);
 tline = fgetl(fid);
@@ -83,24 +84,25 @@ while ischar(tline)
         tmp = strtrim(strsplit(tmp{1},'='));
         products = strtrim(strsplit(tmp{2},'+'));
         reactants = strtrim(strsplit(tmp{1},'+'));
+        reactants = reactants(~strcmp(reactants,'hv'));
         
         % Handle coefficients in reactants and products, or a product being
         % specified multiple times.
+        [products, product_coeff] = process_eqn(products);
+        [reactants, reactant_coeff] = process_eqn(reactants);
         
         % Parse the rate constant
         k=1; % temp debugging code.
         
         % Construct the derivative function and add it to any existing such
-        % functions in the mechanism for this species. Remove 'hv' from
-        % the reactants at this point (photons)
-        reactants = reactants(~strcmp(reactants,'hv'));
+        % functions in the mechanism for this species. 
         rr = ismember(species, reactants);
         if sum(rr) ~= numel(reactants)
             nf = ~ismember(reactants, species);
             error('mechanism_parse:unknown_reactant','The reactant %s cannot be identified in the species list',strjoin(reactants(nf),', '));
         end
         
-        f = sprintf('%e*prod(c(%s))', k, mat2str(find(rr)));
+        f = sprintf('%e*prod(c(%s) .* %s)', k, mat2str(find(rr)), mat2str(reactant_coeff));
         
         % Add this for each product
         pp = find(ismember(species, products));
@@ -108,14 +110,30 @@ while ischar(tline)
             nf = ~ismember(products, species);
             error('mechanism_parse:unknown_reactant','The product %s cannot be identified in the species list',strjoin(products(nf),', '));
         end
-        for j=pp
-            if isa(J{j},'function_handle')
-                J{j} = eval(sprintf('@(c,j) %s + %s',f,func2str(J{j})));
+        for j=1:numel(pp)
+            if isa(J{pp(j)},'function_handle')
+                J{pp(j)} = eval(sprintf('@(c,j) %e * %s + %s',product_coeff(j),f,func2str(J{pp(j)})));
             else
-                J{j} = eval(sprintf('@(c,j) %s',f));
+                J{pp(j)} = eval(sprintf('@(c,j) %e * %s',product_coeff(j),f));
             end
         end
     end
     tline = fgetl(fid);
+end
+end
+
+function [chem_names, chem_coeff] = process_eqn(chem)
+chem_names = unique(chem);
+chem_coeff = ones(size(chem_names));
+for j=1:numel(chem_names)
+    [s,e] = regexp(chem_names{j},'(?<!\w)\d*\.*\d*');
+    if ~isempty(s)
+        % Calculate the coefficient: if the species if mentioned more than
+        % once, account for that.
+        chem_coeff(j) = str2double(chem_names{j}(s:e));
+        chem_names{j}(s:e)=[];
+        chem_names{j} = strtrim(chem_names{j});
+    end
+    chem_coeff(j) = chem_coeff(j) * sum(strcmp(chem_names{j},chem));
 end
 end
