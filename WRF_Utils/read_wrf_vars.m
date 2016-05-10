@@ -71,10 +71,19 @@ elseif ~isscalar(force_dims) || (~isnumeric(force_dims) && ~islogical(force_dims
     E.badinput('force_dims, if given, must be a scalar logical or number than can be converted to a logical')
 end
 
+waitbar_bool = false;
 if ~exist('DEBUG_LEVEL','var')
     DEBUG_LEVEL = 1;
+elseif ischar(DEBUG_LEVEL) && strcmpi('visual',DEBUG_LEVEL)
+    if isDisplay
+        waitbar_bool = true;
+        DEBUG_LEVEL = 0;
+    else
+        warning('Cannot use waitbar when running in non-GUI mode, defaulting to DEBUG_LEVEL = 1')
+        DEBUG_LEVEL = 1;
+    end
 elseif ~isscalar(DEBUG_LEVEL) || ~isnumeric(DEBUG_LEVEL)
-    E.badinput('DEBUG_LEVEL must be a scalar')
+    E.badinput('DEBUG_LEVEL must be a scalar or the string ''visual''')
 end
     
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -135,7 +144,14 @@ end
 % Now go through each file and import each variable into the correct cell
 % in varargout, concatenating as we go.
 
+if waitbar_bool
+    wb = waitbar(0, 'Reading WRF files');
+end
+
 for d=1:n_days
+    if waitbar_bool
+        waitbar(d/n_days)
+    end
     if DEBUG_LEVEL > 0
         fprintf('Reading day %d of %d: ', d, n_days);
     end
@@ -155,6 +171,10 @@ for d=1:n_days
     if DEBUG_LEVEL > 0
         fprintf('\n');
     end
+end
+
+if waitbar_bool
+    close(wb)
 end
 
 end
