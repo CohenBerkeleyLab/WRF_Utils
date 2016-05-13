@@ -1,5 +1,5 @@
 function [ Var ] = unstagger( Var, dim  )
-%[ U, V ] = UNSTAGGER( U, V ) Converts staggered winds to unstaggered
+% U = UNSTAGGER( U, dim ) Converts staggered WRF variables to unstaggered.
 %   WRF outputs some variables, notably winds, in staggered coordinates.
 %   This is for variables that are calculated on grid edges instead of grid
 %   centers. Unstaggering isn't hard, it's just requires a fair bit of
