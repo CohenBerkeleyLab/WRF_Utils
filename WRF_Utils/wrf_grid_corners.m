@@ -1,6 +1,9 @@
 function [ xloncorn, xlatcorn ] = wrf_grid_corners( xlon, xlat )
-%UNTITLED2 Summary of this function goes here
-%   Detailed explanation goes here
+%WRF_GRID_CORNERS Computes corners of WRF grid cells.
+%   [ XLONCORN, XLATCORN ] = WRF_GRID_CORNERS( XLON, XLAT )
+%       Takes as input the grid center points XLON and XLAT. Returns the
+%       4-by-m-by-n arrays XLONCORN and XLATCORN where m and n are the
+%       first and second dimension lengths of XLON and XLAT.
 
 
 xloncorn = nan([4, size(xlon)]);
