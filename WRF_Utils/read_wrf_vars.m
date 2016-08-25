@@ -37,7 +37,7 @@ E = JLLErrors;
 if ~ischar(filepath)
     E.badinput('filepath must be a string')
 elseif ~exist(filepath, 'dir')
-    E.badinput('%s is an invalid directory')
+    E.badinput('%s is an invalid directory', filepath)
 end
 
 if isstruct(filenames)
