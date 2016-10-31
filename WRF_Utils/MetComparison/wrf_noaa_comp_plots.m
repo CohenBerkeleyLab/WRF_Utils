@@ -7,6 +7,7 @@ E = JLLErrors;
 switch lower(plottype)
     case 'spatial'
     case 'timeser'
+        error_timeseries();
 end
 
     function plot_spatial_agreement()
@@ -30,9 +31,14 @@ end
         quantity = ask_multichoice('Which quantity to plot?', {'Winds', 'Temperature'}, 'list', true);
         
         % Load the Match object from match_wrf_noaa
-        match_file = '';
-        M = load(match_file);
-        Match = M.Match; clear M
+        match_dir = '/Users/Josh/Documents/MATLAB/BEHR/Workspaces/WRF/NOAA ISD Obs Comparison/';
+        files = dir('*Match*.mat');
+        files = {files.name};
+        match_file = ask_multichoice('Choose the match file to plot', files, 'list', true);
+        M = load(fullfile(match_dir,match_file));
+        fns = fieldnames(M);
+        if numel(fns) > 1; warning('Only plotting first variable in %s', match_file); end
+        Match = M.(fns{1}); clear M
         
         ndays = size(Match.wrf_U,3);
         
