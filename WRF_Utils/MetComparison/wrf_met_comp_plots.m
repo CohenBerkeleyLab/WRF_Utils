@@ -3,9 +3,12 @@ function [ varargout ] = wrf_met_comp_plots( plottype )
 %   Detailed explanation goes here
 
 E = JLLErrors;
+noaa_match_dir = '/Users/Josh/Documents/MATLAB/BEHR/Workspaces/WRF/NOAA ISD Obs Comparison/';
 
 switch lower(plottype)
     case 'spatial'
+    case 'noaa-timeser-all'
+        all_noaa_timeseries();
     case 'noaa-timeser'
         noaa_error_timeseries();
     case 'met-error'
@@ -24,7 +27,48 @@ end
         quantity = ask_multichoice('Which quantity to plot?', {'Winds', 'Temperature'}, 'list', true);
     end
 
-    function varargout = noaa_error_timeseries()
+    function all_noaa_timeseries()
+        quantity = ask_multichoice('Which quantity to plot?', {'Winds (U-V)','Winds (vel-dir)', 'Temperature'}, 'list', true);
+        
+        % Load all matches
+        files = dir(fullfile(noaa_match_dir,'*Match*.mat'));
+        legstr = cell(size(files));
+        Matches = cell(size(files));
+        for a=1:numel(files)
+            M = load(fullfile(noaa_match_dir, files(a).name));
+            fns = fieldnames(M);
+            if numel(fns) > 1; warning('Only plotting first variable in %s', files(a).name); end
+            Matches{a} = M.(fns{1});
+            [~, legstr{a}] = fileparts(files(a).name);
+        end
+        
+        if strcmpi(quantity, 'winds (vel-dir)')
+            rmses = cell(numel(Matches),2);
+        else
+            rmses = cell(numel(Matches),1);
+        end
+        xdates = cell(numel(Matches,1));
+        
+        for a=1:numel(Matches)
+            [xdates{a}, rmses(a,:), ystr] = noaa_error_timeseries(Matches{a}, quantity);
+        end
+        
+        for b=1:size(rmses,2)
+            figure;
+            hold on
+            for a=1:size(rmses,1)
+                plot(xdates{a}, rmses{a,b}, 'o-','linewidth',2)
+            end
+            datetick('x');
+            set(gca,'XTickLabelRotation',45);
+            set(gca,'FontSize',16);
+            ylabel(ystr{b});
+            legend(legstr{:});
+        end
+        
+    end
+
+    function varargout = noaa_error_timeseries(Match, quantity)
         % This function will make a time series plot showing the difference
         % between WRF and observed quantities day by day. In theory, this
         % agreement should get worse over time. If there is an output, it
@@ -34,27 +78,36 @@ end
         
         % Currently unused
         %agreement_type = ask_multichoice('How to measure agreement?', {'RMSE'},'list',true);
-        quantity = ask_multichoice('Which quantity to plot?', {'Winds', 'Temperature'}, 'list', true);
         
-        % Load the Match object from match_wrf_noaa
-        match_dir = '/Users/Josh/Documents/MATLAB/BEHR/Workspaces/WRF/NOAA ISD Obs Comparison/';
-        files = dir('*Match*.mat');
-        files = {files.name};
-        match_file = ask_multichoice('Choose the match file to plot', files, 'list', true);
-        M = load(fullfile(match_dir,match_file));
-        fns = fieldnames(M);
-        if numel(fns) > 1; warning('Only plotting first variable in %s', match_file); end
-        Match = M.(fns{1}); clear M
-        
+        if ~exist('quantity','var')
+            quantity = ask_multichoice('Which quantity to plot?', {'Winds (U-V)','Winds (vel-dir)', 'Temperature'}, 'list', true);
+        end
+            
+        if ~exist('Match','var')
+            % Load the Match object from match_wrf_noaa
+            files = dir(fullfile(noaa_match_dir,'*Match*.mat'));
+            files = {files.name};
+            match_file = ask_multichoice('Choose the match file to plot', files, 'list', true);
+            M = load(fullfile(noaa_match_dir,match_file));
+            fns = fieldnames(M);
+            if numel(fns) > 1; warning('Only plotting first variable in %s', match_file); end
+            Match = M.(fns{1}); clear M
+        end
         ndays = size(Match.wrf_U,3);
         
         switch lower(quantity)
-            case 'winds'
+            case 'winds (u-v)'
+                rmse = cell(1,1);
                 rmse = wind_rmse(reshape(Match.wrf_U,[],ndays), reshape(Match.wrf_V, [], ndays), reshape(Match.noaa_U, [], ndays), reshape(Match.noaa_V, [], ndays));
-                ystr = 'RMSE winds (U+V, m/s)';
+                ystr = {'RMSE winds (U+V, m/s)'};
+            case 'winds (vel-dir)'
+                rmse = cell(1,2);
+                [rmse{1}, rmse{2}] = wind_rmse_veldir(reshape(Match.wrf_U,[],ndays), reshape(Match.wrf_V, [], ndays), reshape(Match.noaa_U, [], ndays), reshape(Match.noaa_V, [], ndays));
+                ystr = {'RMSE velocity (m/s)', 'RMSE direction (deg)'};
             case 'temperature'
+                rmse = cell(1,1);
                 rmse = temperature_rmse(reshape(Match.wrf_T,[],ndays), reshape(Match.noaa_T,[],ndays));
-                ystr = 'RMSE temperature (K)';
+                ystr = {'RMSE temperature (K)'};
             otherwise
                 E.notimplemented(quantity);
         end
@@ -64,16 +117,19 @@ end
         % Get rid of hour, minute, second in the datenum
         xdates = datenum(datestr(Match.dnums(1,:),'yyyy-mm-dd'));
         
-        if nargout == 2
+        if nargout == 3
             varargout{1} = xdates;
             varargout{2} = rmse;
+            varargout{3} = ystr;
         else
-            figure;
-            plot(xdates, rmse, 'ko-');
-            datetick('x','mm/dd');
-            xlabel('Date')
-            set(gca,'xtickLabelRotation',45);
-            ylabel(ystr);
+            for a=1:numel(rmse)
+                figure;
+                plot(xdates, rmse{a}, 'ko-');
+                datetick('x','mm/dd');
+                xlabel('Date')
+                set(gca,'xtickLabelRotation',45);
+                ylabel(ystr{a});
+            end
         end
     end
 
@@ -82,49 +138,133 @@ end
         if ~exist('Match','var')
             F=dir(fullfile(matchdir,'*.mat'));
             opts = {F.name};
+            opts{end+1} = 'All';
             opts{end+1} = 'Gen new match file';
             user_ans = ask_multichoice('Which match file to use?', opts, 'list', true);
             if strcmpi(user_ans,'gen new match file')
                 fprintf('Use wrf_met_comp_plots(''match_wrf_met'') and save the structure in\n%s\n',matchdir);
                 return
+            elseif strcmpi(user_ans,'all')
+                Match = cell(size(F));
+                for a=1:numel(F)
+                    M = load(fullfile(matchdir, F(a).name), 'Match');
+                    Match{a} = M.Match;
+                end
+                legstr = {F.name}';
             else
                 M = load(fullfile(matchdir, user_ans),'Match');
-                Match = M.Match;
+                Match = {M.Match};
+                legstr = {user_ans};
             end
         end
         
-        plot_types = {'time series'};
+        plot_types = {'time series','spatial'};
         plt = ask_multichoice('Which type of plot to make?', plot_types, 'list', true');
-        allowed_quantities = {'winds','temperature'};
+        allowed_quantities = {'winds (U+V)','winds (dir+vel)','temperature'};
         quantity = ask_multichoice('Which quantity to plot?', allowed_quantities, 'list', true);
         switch lower(plt)
             case 'time series'
-                met_error_timeseries(Match, quantity);
+                met_error_timeseries(Match, quantity, legstr);
+            case 'spatial'
+                if numel(Match) > 1
+                    E.badinput('Plotting multiple matched runs is incompatible with a spatial plot')
+                elseif iscell(Match)
+                    Match = Match{1};
+                end
+                met_error_spatial(Match, quantity);
             otherwise
                 E.notimplemented(plt)
         end
     end
 
-    function met_error_timeseries(Match, quantity)
+    function met_error_spatial(Match, quantity)
         % Call interactively from met_error_plots to load the match file
         % and get the quantity to plot.
-        ndays = numel(Match.dvec);
-        switch lower(quantity)
-            case 'winds'
-                rmse = wind_rmse(reshape(Match.wrf_U,[],ndays), reshape(Match.wrf_V,[],ndays), reshape(Match.met_U,[],ndays), reshape(Match.met_V,[],ndays));
-                ystr = 'RMSE in winds (U+V, m/s)';
-            case 'temperature'
-                rmse = temperature_rmse(reshape(Match.wrf_T,[],ndays), reshape(Match.met_T,[],ndays));
-                ystr = 'RMSE in temperature (K)';
-            otherwise
-                E.notimplemented(quantity);
+        blank_mat = nan(size(Match.lon));
+        if strcmpi(quantity, 'winds (dir+vel)')
+            rmse = cell(1,2);
+            rmse(:) = {blank_mat};
+        else
+            rmse = {blank_mat};
+        end
+        for a=1:size(rmse{1},1)
+            for b=1:size(rmse{1},2)
+                if ~isempty(regexp(quantity,'winds','once'))
+                    wrf_U_slice = squeeze(Match.wrf_U(a,b,:));
+                    wrf_V_slice = squeeze(Match.wrf_V(a,b,:));
+                    narr_U_slice = squeeze(Match.met_U(a,b,:));
+                    narr_V_slice = squeeze(Match.met_V(a,b,:));
+                    if strcmpi(quantity, 'winds (U+V)')
+                        rmse{1}(a,b) = wind_rmse(wrf_U_slice, wrf_V_slice, narr_U_slice, narr_V_slice);
+                        cblabel{1} = 'RMSE wind U+V (m/s)';
+                    elseif strcmpi(quantity, 'winds (dir+vel)');
+                        [rmse{1}(a,b), rmse{2}(a,b)] = wind_rmse_veldir(wrf_U_slice, wrf_V_slice, narr_U_slice, narr_V_slice);
+                        cblabel{1} = 'RMSE wind speed (m/s)';
+                        cblabel{2} = 'RMSE wind direction (deg)';
+                    else
+                        E.notimplemented(quantity)
+                    end
+                elseif strcmpi(quantity, 'temperature')
+                    wrf_T_slice = squeeze(Match.wrf_T(a,b,:));
+                    narr_T_slice = squeeze(Match.met_T(a,b,:));
+                    rmse{1}(a,b) = temperature_rmse(wrf_T_slice, narr_T_slice);
+                    cblabel{1} = 'RMSE temperature (K)';
+                else
+                    E.notimplemented(quantity)
+                end
+            end
         end
         
-        figure; 
-        plot(Match.dvec, rmse, 'ko-');
-        datetick('x');
-        set(gca,'XTickLabelRotation',45);
-        ylabel(ystr);
+        for f=1:numel(rmse)
+            figure;
+            pcolor(Match.lon, Match.lat, rmse{f});
+            colormap jet
+            cb = colorbar;
+            cb.Label.String = cblabel{f};
+            shading flat
+            state_outlines('k','not','ak','hi');
+            set(gca,'fontsize',16)
+        end
+    end
+
+    function met_error_timeseries(Match, quantity, legstr)
+        % Call interactively from met_error_plots to load the match file
+        % and get the quantity to plot.
+        
+        if strcmpi(quantity, 'winds (dir+vel)')
+            rmse = cell(numel(Match),2);
+        else
+            rmse = cell(numel(Match),1);
+        end
+        for a=1:numel(Match)
+            ndays = numel(Match{a}.dvec);
+            switch lower(quantity)
+                case 'winds (u+v)'
+                    rmse{a} = wind_rmse(reshape(Match{a}.wrf_U,[],ndays), reshape(Match{a}.wrf_V,[],ndays), reshape(Match{a}.met_U,[],ndays), reshape(Match{a}.met_V,[],ndays));
+                    ystr = {'RMSE in winds (U+V, m/s)'};
+                case 'winds (dir+vel)'
+                    [rmse{a,1}, rmse{a,2}] = wind_rmse_veldir(reshape(Match{a}.wrf_U,[],ndays), reshape(Match{a}.wrf_V,[],ndays), reshape(Match{a}.met_U,[],ndays), reshape(Match{a}.met_V,[],ndays));
+                    ystr = {'RMSE in wind speed (m/s)', 'RMSE in wind direction (deg)'};
+                case 'temperature'
+                    rmse{a} = temperature_rmse(reshape(Match{a}.wrf_T,[],ndays), reshape(Match{a}.met_T,[],ndays));
+                    ystr = {'RMSE in temperature (K)'};
+                otherwise
+                    E.notimplemented(quantity);
+            end
+        end
+        
+        for b=1:size(rmse,2)
+            figure;
+            hold on
+            for a=1:size(rmse,1)
+                plot(Match{a}.dvec, rmse{a,b}, 'o-');
+            end
+            datetick('x');
+            set(gca,'XTickLabelRotation',45);
+            set(gca,'FontSize',16);
+            ylabel(ystr{b});
+            legend(legstr{:});
+        end
     end
 
     function Match = match_wrf_met(wrfdir, metdir, avgday)
@@ -248,11 +388,30 @@ n_obs = nansum2(valid_obs,1);
 rmse = sqrt ( sq_del ./ n_obs );
 end
 
+function [rmse_vel, rmse_dir] = wind_rmse_veldir(wrf_U, wrf_V, true_U, true_V)
+wrf_vel = sqrt(wrf_U .^ 2 + wrf_V .^ 2);
+wrf_dir = atan2d(wrf_V, wrf_U);
+true_vel = sqrt(true_U .^ 2 + true_V .^ 2);
+true_dir = atan2d(true_V, true_U);
+
+del_vel = wrf_vel - true_vel;
+del_dir = angle_diffd(wrf_dir, true_dir);
+
+sq_delvel = nansum2( del_vel .^ 2, 1);
+sq_deldir = nansum2( del_dir .^ 2, 1);
+
+valid_obs = ~isnan(wrf_U) & ~isnan(wrf_V) & ~isnan(true_U) & ~isnan(true_V);
+n_obs = nansum2(valid_obs,1);
+
+rmse_vel = sqrt( sq_delvel ./ n_obs );
+rmse_dir = sqrt( sq_deldir ./ n_obs );
+end
+
 function rmse = temperature_rmse(wrf_T, true_T)
 % Computes root mean squared error for the temperatures. RMSE will be
 % calculated for each column in the inputs.
 del_t = wrf_T - true_T;
-sq_del = nansum2( reshape(del_t .^ 2, [], ndays), 1);
+sq_del = nansum2( del_t .^ 2, 1);
 valid_obs = ~isnan(wrf_T) & ~isnan(true_T);
 n_obs = nansum2(valid_obs,1);
 rmse = sqrt ( sq_del ./ n_obs );
