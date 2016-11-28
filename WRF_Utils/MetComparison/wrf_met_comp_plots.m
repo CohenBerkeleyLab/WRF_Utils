@@ -157,14 +157,30 @@ end
                 legstr = {user_ans};
             end
         end
+        % Check if we're loading Match files with vertical information or
+        % not
+        d3_matches = false(size(Match));
+        for a=1:numel(d3_matches)
+            d3_matches(a) = ndims(Match{a}.wrf_U)>3;
+        end
+        if ~all(d3_matches) && ~all(~d3_matches)
+            E.callError('inconsistent_matches','Loaded Matches have inconsistent dimensions')
+        end
         
-        plot_types = {'time series','spatial'};
+        plot_types = {'time series','spatial','spatial slices'};
         plt = ask_multichoice('Which type of plot to make?', plot_types, 'list', true');
         allowed_quantities = {'winds (U+V)','winds (dir+vel)','temperature'};
         quantity = ask_multichoice('Which quantity to plot?', allowed_quantities, 'list', true);
+        if all(d3_matches)
+            nlevels = size(Match{1}.wrf_U,3);
+            levels = ask_number('Enter what model levels to plot the RMSE for (separated by a space)','default',1,'testfxn',@(x) any(x >= 1 & x <= nlevels & mod(x,1) == 0),'testmsg',...
+                sprintf('All values must be between 1 and %d and must be integers',nlevels));
+        else
+            levels = 1;
+        end
         switch lower(plt)
             case 'time series'
-                met_error_timeseries(Match, quantity, legstr);
+                met_error_timeseries(Match, quantity, legstr, levels);
             case 'spatial'
                 if numel(Match) > 1
                     E.badinput('Plotting multiple matched runs is incompatible with a spatial plot')
@@ -172,9 +188,50 @@ end
                     Match = Match{1};
                 end
                 met_error_spatial(Match, quantity);
+            case 'spatial slices'
+                met_error_slices(Match, quantity, {F.name});
             otherwise
                 E.notimplemented(plt)
         end
+    end
+
+    function met_error_slices(Match_in, quantity, matchnames)
+        % Call interactively from met_error_plots.
+        % First we need to find which Match object has the shortest date
+        % vector; we will restrict all others to that.
+        
+        dvec = Match_in{1}.dvec;
+        for a=2:numel(Match_in)
+            if numel(Match_in{a}.dvec) < numel(dvec)
+                dvec = Match_in{a}.dvec;
+            end
+        end
+        
+        [slon, slat] = state_outlines('not', 'ak', 'hi');
+        
+        % Now get the difference of either wind speed or wind direction
+        for a=1:numel(Match_in)
+            Match = Match_in{a};
+            tt = ismember(Match.dvec, dvec);
+            if sum(tt) ~= numel(dvec)
+                E.callError('Not all dates in the smallest datevec are present in %s', matchnames{a});
+            end
+            if strcmpi(quantity, 'winds (dir+vel)')
+                wrf_vel = sqrt(Match.wrf_U(:,:,tt) .^ 2 + Match.wrf_V(:,:,tt) .^ 2);
+                met_vel = sqrt(Match.met_U(:,:,tt) .^ 2 + Match.met_V(:,:,tt) .^ 2);
+                diff_vel = wrf_vel - met_vel;
+                
+                wrf_dir = atan2d(Match.wrf_V(:,:,tt), Match.wrf_U(:,:,tt));
+                met_dir = atan2d(Match.met_V(:,:,tt), Match.met_U(:,:,tt));
+                diff_dir = angle_diffd(wrf_dir, met_dir);
+            else
+                E.notimplemented(quantity)
+            end
+            
+            plot_slice_gui(diff_vel, Match.lon, Match.lat, slon, slat, sprintf('%s - velocity', matchnames{a}));
+            plot_slice_gui(diff_dir, Match.lon, Match.lat, slon, slat, sprintf('%s - direction', matchnames{a}));
+        end
+            
     end
 
     function met_error_spatial(Match, quantity)
@@ -227,43 +284,75 @@ end
         end
     end
 
-    function met_error_timeseries(Match, quantity, legstr)
+    function met_error_timeseries(Match, quantity, legstr, levels)
         % Call interactively from met_error_plots to load the match file
         % and get the quantity to plot.
         
-        if strcmpi(quantity, 'winds (dir+vel)')
-            rmse = cell(numel(Match),2);
-        else
-            rmse = cell(numel(Match),1);
+        if ~exist('levels','var')
+            levels = 1;
         end
+        
+        % Handle 3D match structures by creating a singleton dimension 3
         for a=1:numel(Match)
-            ndays = numel(Match{a}.dvec);
-            switch lower(quantity)
-                case 'winds (u+v)'
-                    rmse{a} = wind_rmse(reshape(Match{a}.wrf_U,[],ndays), reshape(Match{a}.wrf_V,[],ndays), reshape(Match{a}.met_U,[],ndays), reshape(Match{a}.met_V,[],ndays));
-                    ystr = {'RMSE in winds (U+V, m/s)'};
-                case 'winds (dir+vel)'
-                    [rmse{a,1}, rmse{a,2}] = wind_rmse_veldir(reshape(Match{a}.wrf_U,[],ndays), reshape(Match{a}.wrf_V,[],ndays), reshape(Match{a}.met_U,[],ndays), reshape(Match{a}.met_V,[],ndays));
-                    ystr = {'RMSE in wind speed (m/s)', 'RMSE in wind direction (deg)'};
-                case 'temperature'
-                    rmse{a} = temperature_rmse(reshape(Match{a}.wrf_T,[],ndays), reshape(Match{a}.met_T,[],ndays));
-                    ystr = {'RMSE in temperature (K)'};
-                otherwise
-                    E.notimplemented(quantity);
+            fns = fieldnames(Match{a});
+            for f=1:numel(fns)
+                if ndims(Match{a}.(fns{f})) == 3
+                    sz = size(Match{a}.(fns{f}));
+                    Match{a}.(fns{f}) = reshape(Match{a}.(fns{f}), [sz(1:3),1,sz(3)]);
+                end
             end
         end
         
-        for b=1:size(rmse,2)
+        if strcmpi(quantity, 'winds (dir+vel)')
+            rmse = cell(numel(Match),numel(levels),2);
+        else
+            rmse = cell(numel(Match),numel(levels),1);
+        end
+        for a=1:numel(Match)
+            ndays = numel(Match{a}.dvec);
+            for b=1:numel(levels)
+                l = levels(b);
+                switch lower(quantity)
+                    case 'winds (u+v)'
+                        rmse{a,b} = wind_rmse(reshape(Match{a}.wrf_U(:,:,l,:),[],ndays), reshape(Match{a}.wrf_V(:,:,l,:),[],ndays), reshape(Match{a}.met_U(:,:,l,:),[],ndays), reshape(Match{a}.met_V(:,:,l,:),[],ndays));
+                        ystr = {'RMSE in winds (U+V, m/s)'};
+                    case 'winds (dir+vel)'
+                        [rmse{a,b,1}, rmse{a,b,2}] = wind_rmse_veldir(reshape(Match{a}.wrf_U(:,:,l,:),[],ndays), reshape(Match{a}.wrf_V(:,:,l,:),[],ndays), reshape(Match{a}.met_U(:,:,l,:),[],ndays), reshape(Match{a}.met_V(:,:,l,:),[],ndays));
+                        ystr = {'RMSE in wind speed (m/s)', 'RMSE in wind direction (deg)'};
+                    case 'temperature'
+                        rmse{a,b} = temperature_rmse(reshape(Match{a}.wrf_T(:,:,l,:),[],ndays), reshape(Match{a}.met_T(:,:,l,:),[],ndays));
+                        ystr = {'RMSE in temperature (K)'};
+                    otherwise
+                        E.notimplemented(quantity);
+                end
+            end
+        end
+        
+        levels_sym = {'o','s','d','v'};
+        levels_lstyle = {'-','--',':','-.'};
+        starttime_colors = {'b','r',[0 0.5 0],'m'};
+        
+        for i=1:size(rmse,3)
+            l = gobjects(size(rmse,1), size(rmse,2));
+            lstr = cell(size(l));
             figure;
-            hold on
-            for a=1:size(rmse,1)
-                plot(Match{a}.dvec, rmse{a,b}, 'o-');
+            for b=1:size(rmse,2)
+                bmod = mod(b-1, numel(levels_sym))+1;
+                marker = levels_sym{bmod};
+                lstyle = levels_lstyle{bmod};
+                for a=1:size(rmse,1)
+                    % You'll want to add more colors if you need to plot
+                    % more starting times
+                    sercol = starttime_colors{a};
+                    l(a,b) = line(Match{a}.dvec, rmse{a,b,i}, 'linestyle',lstyle,'marker',marker,'color',sercol,'linewidth',2);
+                    lstr{a,b} = sprintf('%s, level %d', legstr{a}, levels(b));
+                end
             end
             datetick('x');
             set(gca,'XTickLabelRotation',45);
             set(gca,'FontSize',16);
-            ylabel(ystr{b});
-            legend(legstr{:});
+            ylabel(ystr{i});
+            legend(l(:),lstr(:));
         end
     end
 
@@ -284,6 +373,10 @@ end
             metdir = ask_multichoice('Choose the directory with the met_em files.', {D.name}, 'list', true);
             metdir = fullfile(sharedir, metdir);
         end
+        if ~exist('surf_bool','var')
+            user_ans = ask_multichoice('Surface winds only (otherwise all levels used)',{'y','n'});
+            surf_bool = strcmpi(user_ans,'y');
+        end
         if ~exist('avgday','var')
             user_ans = ask_multichoice('Average all available hours in a day?', {'y','n'});
             avgday = strcmp(user_ans,'y');
@@ -297,15 +390,38 @@ end
         % WRF-BEHR files, the only overlap for each day will be 1800 and
         % 2100 UTC.
         
-        metfiles = dir(fullfile(metdir, 'met_em*'));
+        metfiles = dir(fullfile(metdir, 'wrfinput_subset*'));
+        met_varnames.lon = 'XLONG';
+        met_varnames.lat = 'XLAT';
+        met_varnames.U = 'U';
+        met_varnames.V = 'V';
+        met_varnames.T = 'TT';
+        if isempty(metfiles)
+            metfiles = dir(fullfile(metdir, 'met_em*'));
+            met_varnames.lon = 'XLONG_M';
+            met_varnames.lat = 'XLAT_M';
+            met_varnames.U = 'UU';
+            met_varnames.V = 'VV';
+            met_varnames.T = 'TT';
+            if ~isempty(metfiles)
+                warning('Could not find wrfinput_subset files, using met_em files. These are not properly interpolated to WRF vertical coordinates, so the comparisons may have greater error than expected.');
+            else
+                E.filenotfound('wrfinput_subset* or met_em*');
+            end
+        end
         metfiles = glob({metfiles.name}, '_(18|21)-00-00');
         
         % Go ahead and load lat/lon, can use to get the size of array we
         % need
-        xlon = ncread(fullfile(metdir, metfiles{1}),'XLONG_M');
-        xlat = ncread(fullfile(metdir, metfiles{1}),'XLAT_M');
+        xlon = ncread(fullfile(metdir, metfiles{1}),met_varnames.lon);
+        xlat = ncread(fullfile(metdir, metfiles{1}),met_varnames.lat);
         
-        blank_mat = nan([size(xlon), numel(metfiles)]);
+        wrf_size = get_wrf_array_size(fullfile(metdir, metfiles{1}));
+        if surf_bool
+            blank_mat = nan([wrf_size(1:2), numel(metfiles)]);
+        else
+            blank_mat = nan([wrf_size(1:3), numel(metfiles)]);
+        end
         wrf_U = blank_mat;
         wrf_V = blank_mat;
         wrf_T = blank_mat;
@@ -325,12 +441,18 @@ end
             dnum = datenum(dstr, 'yyyy-mm-dd_HH-MM-SS');
             dvec(a) = dnum;
             % Load met data
-            [met_U_a, met_V_a, met_T_a, met_cos, met_sin] = read_wrf_vars(metdir, metfiles(a), {'UU','VV','TT','COSALPHA','SINALPHA'});
+            [met_U_a, met_V_a, met_T_a, met_cos, met_sin] = read_wrf_vars(metdir, metfiles(a), {met_varnames.U,met_varnames.V,met_varnames.T,'COSALPHA','SINALPHA'});
             [met_U_a, met_V_a] = wrf_winds_transform(met_U_a, met_V_a, met_cos, met_sin);
-            % Get the surface winds/temperature
-            met_U(:,:,a) = met_U_a(:,:,1);
-            met_V(:,:,a) = met_V_a(:,:,1);
-            met_T(:,:,a) = met_T_a(:,:,1);
+            if surf_bool
+                % Get the surface winds/temperature
+                met_U(:,:,a) = met_U_a(:,:,1);
+                met_V(:,:,a) = met_V_a(:,:,1);
+                met_T(:,:,a) = met_T_a(:,:,1);
+            else
+                met_U(:,:,:,a) = met_U_a;
+                met_V(:,:,:,a) = met_V_a;
+                met_T(:,:,:,a) = met_T_a;
+            end
             
             this_wrf_file = glob(wrffiles, datestr(dnum, 'yyyy-mm-dd'));
             if isempty(this_wrf_file)
@@ -350,9 +472,15 @@ end
             % Put the proper slices of WRF data in the output
             % arrays
             xx = strcmp(cellstr(wrf_times), datestr(dnum,'yyyy-mm-dd_HH:MM:SS'));
-            wrf_U(:,:,a) = wrf_U_a(:,:,1,xx);
-            wrf_V(:,:,a) = wrf_V_a(:,:,1,xx);
-            wrf_T(:,:,a) = wrf_T_a(:,:,1,xx);
+            if surf_bool
+                wrf_U(:,:,a) = wrf_U_a(:,:,1,xx);
+                wrf_V(:,:,a) = wrf_V_a(:,:,1,xx);
+                wrf_T(:,:,a) = wrf_T_a(:,:,1,xx);
+            else
+                wrf_U(:,:,:,a) = wrf_U_a(:,:,:,xx);
+                wrf_V(:,:,:,a) = wrf_V_a(:,:,:,xx);
+                wrf_T(:,:,:,a) = wrf_T_a(:,:,:,xx);
+            end
         end
         
         % If we want to average down to one value per day, then we need to
@@ -368,12 +496,21 @@ end
         Match.lon = xlon;
         Match.lat = xlat;
         Match.dvec = dvec(include_inds);
-        Match.wrf_U = wrf_U(:,:,include_inds);
-        Match.wrf_V = wrf_V(:,:,include_inds);
-        Match.wrf_T = wrf_T(:,:,include_inds);
-        Match.met_U = met_U(:,:,include_inds);
-        Match.met_V = met_V(:,:,include_inds);
-        Match.met_T = met_T(:,:,include_inds);
+        if surf_bool
+            Match.wrf_U = wrf_U(:,:,include_inds);
+            Match.wrf_V = wrf_V(:,:,include_inds);
+            Match.wrf_T = wrf_T(:,:,include_inds);
+            Match.met_U = met_U(:,:,include_inds);
+            Match.met_V = met_V(:,:,include_inds);
+            Match.met_T = met_T(:,:,include_inds);
+        else
+            Match.wrf_U = wrf_U(:,:,:,include_inds);
+            Match.wrf_V = wrf_V(:,:,:,include_inds);
+            Match.wrf_T = wrf_T(:,:,:,include_inds);
+            Match.met_U = met_U(:,:,:,include_inds);
+            Match.met_V = met_V(:,:,:,include_inds);
+            Match.met_T = met_T(:,:,:,include_inds);
+        end
     end
 end
 

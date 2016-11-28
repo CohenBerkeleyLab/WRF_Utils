@@ -1,6 +1,17 @@
 function [ dnums ] = date_from_wrf_filenames( files )
-%UNTITLED5 Summary of this function goes here
-%   Detailed explanation goes here
+%DATE_FROM_WRF_FILENAMES Generates an array of datenums corresponding to the given WRF files
+%   DNUMS = DATE_FROM_WRF_FILENAMES( FILES ) Returns the array DNUMS with
+%   the date numbers corresponding to the name of each of the files in
+%   FILES. FILES may be a single filename as a string, a cell array of
+%   strings, or a structure returned by DIR(). In the latter two cases,
+%   DNUMS will have the same shape as FILES. 
+%
+%   This function assumes that the date and time is given in the filename
+%   as yyyy-mm-dd_HH:MM:SS or yyyy-mm-dd_HH-MM-SS. It also makes the
+%   implicit assumption that only one time is represented by the wrfout
+%   file, i.e. frames_per_outfile in the &time_control section of the WRF
+%   namelist.input file is set to 1. If this is not true, only the time
+%   represented in the filename is captured.
 
 E = JLLErrors;
 
