@@ -1,4 +1,4 @@
-function [ varargout ] = wrf_met_comp_plots( plottype )
+function [ varargout ] = wrf_met_comp_plots( plottype, varargin )
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -13,6 +13,8 @@ switch lower(plottype)
         noaa_error_timeseries();
     case 'met-error'
         met_error_plots();
+    case 'rmse-trend'
+        rmse_trend_from_fig(varargin{1});
 % Functions below here aren't really meant to be called externally, but are
 % available just the same
     case 'match_wrf_met'
@@ -138,23 +140,19 @@ end
         if ~exist('Match','var')
             F=dir(fullfile(matchdir,'*.mat'));
             opts = {F.name};
-            opts{end+1} = 'All';
             opts{end+1} = 'Gen new match file';
-            user_ans = ask_multichoice('Which match file to use?', opts, 'list', true);
-            if strcmpi(user_ans,'gen new match file')
-                fprintf('Use wrf_met_comp_plots(''match_wrf_met'') and save the structure in\n%s\n',matchdir);
+            user_ans = ask_multiselect('Which match file to use?', opts);
+            if any(strcmpi(user_ans,'gen new match file'))
+                fprintf('To generate a new match file, use wrf_met_comp_plots(''match_wrf_met'') and save the structure in\n%s\n',matchdir);
                 return
-            elseif strcmpi(user_ans,'all')
-                Match = cell(size(F));
-                for a=1:numel(F)
-                    M = load(fullfile(matchdir, F(a).name), 'Match');
-                    Match{a} = M.Match;
-                end
-                legstr = {F.name}';
             else
-                M = load(fullfile(matchdir, user_ans),'Match');
-                Match = {M.Match};
-                legstr = {user_ans};
+                Match = cell(1,numel(user_ans));
+                legstr = cell(1,numel(user_ans));
+                for a=1:numel(user_ans)
+                    M = load(fullfile(matchdir, user_ans{a}),'Match');
+                    Match{a} = M.Match;
+                    legstr{a} = user_ans{a};
+                end
             end
         end
         % Check if we're loading Match files with vertical information or
@@ -292,13 +290,29 @@ end
             levels = 1;
         end
         
-        % Handle 3D match structures by creating a singleton dimension 3
+        % Handle 3D (rather than 4D) match structures by creating a
+        % singleton dimension 3
         for a=1:numel(Match)
             fns = fieldnames(Match{a});
             for f=1:numel(fns)
                 if ndims(Match{a}.(fns{f})) == 3
                     sz = size(Match{a}.(fns{f}));
                     Match{a}.(fns{f}) = reshape(Match{a}.(fns{f}), [sz(1:3),1,sz(3)]);
+                end
+            end
+        end
+        
+        levels_inds = zeros(numel(Match), numel(levels));
+        for a=1:numel(Match)
+            if isfield(Match{a}, 'model_levels')
+                match_levels = Match{a}.model_levels;
+            else
+                match_levels = 1:size(Match{a}.wrf_U,3);
+            end
+            for b=1:numel(levels)
+                li = find(levels(b)==match_levels);
+                if ~isempty(li)
+                    levels_inds(a,b) = li;
                 end
             end
         end
@@ -311,7 +325,12 @@ end
         for a=1:numel(Match)
             ndays = numel(Match{a}.dvec);
             for b=1:numel(levels)
-                l = levels(b);
+                if levels_inds(a,b) > 0
+                    l = levels_inds(a,b);
+                else
+                    % Level not present in this Match object, skip
+                    continue
+                end
                 switch lower(quantity)
                     case 'winds (u+v)'
                         rmse{a,b} = wind_rmse(reshape(Match{a}.wrf_U(:,:,l,:),[],ndays), reshape(Match{a}.wrf_V(:,:,l,:),[],ndays), reshape(Match{a}.met_U(:,:,l,:),[],ndays), reshape(Match{a}.met_V(:,:,l,:),[],ndays));
@@ -356,6 +375,24 @@ end
         end
     end
 
+    function rmse_trend_from_fig(axes)
+        ch = get(axes, 'children');
+        for a=1:numel(ch)
+            dvec = ch(a).XData;
+            x = dvec - floor(dvec(1));
+            rmse = ch(a).YData;
+            
+            figure;
+            plot(x, rmse, 'ko');
+            % There is no uncertainty in the date, so use y-residual
+            % fitting
+            plot_fit_line(x, rmse, 'regression', 'y-resid', 'one2one', false);
+            set(gca,'fontsize', 16);
+            ylabel(axes.YLabel.String);
+            title(ch(a).DisplayName);
+        end
+    end
+
     function Match = match_wrf_met(wrfdir, metdir, avgday)
         % This function will compare WRF output meteorology to that
         % contained in the met_em files that are derived from NARR
@@ -374,8 +411,7 @@ end
             metdir = fullfile(sharedir, metdir);
         end
         if ~exist('surf_bool','var')
-            user_ans = ask_multichoice('Surface winds only (otherwise all levels used)',{'y','n'});
-            surf_bool = strcmpi(user_ans,'y');
+            levels = ask_number('Enter the levels to include in the output, separated by space. Valid levels are 1-29', 'testfxn', @(x) all(x>=1 & x<=29), 'testmsg', 'All level indices must be between 1 and 29');
         end
         if ~exist('avgday','var')
             user_ans = ask_multichoice('Average all available hours in a day?', {'y','n'});
@@ -417,11 +453,9 @@ end
         xlat = ncread(fullfile(metdir, metfiles{1}),met_varnames.lat);
         
         wrf_size = get_wrf_array_size(fullfile(metdir, metfiles{1}));
-        if surf_bool
-            blank_mat = nan([wrf_size(1:2), numel(metfiles)]);
-        else
-            blank_mat = nan([wrf_size(1:3), numel(metfiles)]);
-        end
+        
+        blank_mat = nan([wrf_size(1:2), numel(levels), numel(metfiles)]);
+        
         wrf_U = blank_mat;
         wrf_V = blank_mat;
         wrf_T = blank_mat;
@@ -443,16 +477,11 @@ end
             % Load met data
             [met_U_a, met_V_a, met_T_a, met_cos, met_sin] = read_wrf_vars(metdir, metfiles(a), {met_varnames.U,met_varnames.V,met_varnames.T,'COSALPHA','SINALPHA'});
             [met_U_a, met_V_a] = wrf_winds_transform(met_U_a, met_V_a, met_cos, met_sin);
-            if surf_bool
-                % Get the surface winds/temperature
-                met_U(:,:,a) = met_U_a(:,:,1);
-                met_V(:,:,a) = met_V_a(:,:,1);
-                met_T(:,:,a) = met_T_a(:,:,1);
-            else
-                met_U(:,:,:,a) = met_U_a;
-                met_V(:,:,:,a) = met_V_a;
-                met_T(:,:,:,a) = met_T_a;
-            end
+            
+            met_U(:,:,:,a) = met_U_a(:,:,levels);
+            met_V(:,:,:,a) = met_V_a(:,:,levels);
+            met_T(:,:,:,a) = met_T_a(:,:,levels);
+            
             
             this_wrf_file = glob(wrffiles, datestr(dnum, 'yyyy-mm-dd'));
             if isempty(this_wrf_file)
@@ -472,15 +501,11 @@ end
             % Put the proper slices of WRF data in the output
             % arrays
             xx = strcmp(cellstr(wrf_times), datestr(dnum,'yyyy-mm-dd_HH:MM:SS'));
-            if surf_bool
-                wrf_U(:,:,a) = wrf_U_a(:,:,1,xx);
-                wrf_V(:,:,a) = wrf_V_a(:,:,1,xx);
-                wrf_T(:,:,a) = wrf_T_a(:,:,1,xx);
-            else
-                wrf_U(:,:,:,a) = wrf_U_a(:,:,:,xx);
-                wrf_V(:,:,:,a) = wrf_V_a(:,:,:,xx);
-                wrf_T(:,:,:,a) = wrf_T_a(:,:,:,xx);
-            end
+            
+            wrf_U(:,:,:,a) = wrf_U_a(:,:,levels,xx);
+            wrf_V(:,:,:,a) = wrf_V_a(:,:,levels,xx);
+            wrf_T(:,:,:,a) = wrf_T_a(:,:,levels,xx);
+            
         end
         
         % If we want to average down to one value per day, then we need to
@@ -496,21 +521,15 @@ end
         Match.lon = xlon;
         Match.lat = xlat;
         Match.dvec = dvec(include_inds);
-        if surf_bool
-            Match.wrf_U = wrf_U(:,:,include_inds);
-            Match.wrf_V = wrf_V(:,:,include_inds);
-            Match.wrf_T = wrf_T(:,:,include_inds);
-            Match.met_U = met_U(:,:,include_inds);
-            Match.met_V = met_V(:,:,include_inds);
-            Match.met_T = met_T(:,:,include_inds);
-        else
-            Match.wrf_U = wrf_U(:,:,:,include_inds);
-            Match.wrf_V = wrf_V(:,:,:,include_inds);
-            Match.wrf_T = wrf_T(:,:,:,include_inds);
-            Match.met_U = met_U(:,:,:,include_inds);
-            Match.met_V = met_V(:,:,:,include_inds);
-            Match.met_T = met_T(:,:,:,include_inds);
-        end
+        Match.model_levels = levels;
+        
+        Match.wrf_U = wrf_U(:,:,:,include_inds);
+        Match.wrf_V = wrf_V(:,:,:,include_inds);
+        Match.wrf_T = wrf_T(:,:,:,include_inds);
+        Match.met_U = met_U(:,:,:,include_inds);
+        Match.met_V = met_V(:,:,:,include_inds);
+        Match.met_T = met_T(:,:,:,include_inds);
+        
     end
 end
 
