@@ -29,10 +29,19 @@ There are two exceptions:
     calc - will include calculated quantities including temperature (TT), number density of air (ndens),
         NO2 number density (no2_ndens), pressure (pres), altitude (z), and box height (zlev). Note that 
         these are included in std.
+    calcmet - like calc, but does not compute NO2 number density and so can be used on wrfinput files.
 
 If using calculated quantities, it is important that $__me reside in the same directory as 
 calculated_quantities.nco (which should be in the same Git repo). Therefore, it is usually best to put a
 symbolic link to $__me in the directory with the wrfout files rather than copying it.
+
+The option --pattern allows you to subset files matching the given pattern instead of wrfout*. The new
+file names will insert \"_subset\" before the first non-alphanumeric character in the file name. You will
+almost certainly need to manually specify variables as the standard variables are unlikely to exist in
+other (not wrfout) files.
+
+By default, if the output file already exists, this will not overwrite it. This behavior can be overridden
+with the --override flag.
 
 Examples:
     ./$__me - generate wrfout_subset files containing the standard variables.
@@ -40,9 +49,12 @@ Examples:
     ./$__me U V - generate wrfout_subset files containing only the U and V variables.
 
     ./$__me std no hno3 - generate wrfout_subset files containing the standard variables plus no and hno3.
+
+    ./$__me --pattern=met_em* UU VV - generate met_subset_em files with the variables UU and VV only
 "
 
-
+pat="wrfout*"
+overwrite=false
 
 # Parse the input
 if [[ $# == 0 ]]; then
@@ -56,7 +68,7 @@ else
     key=$(echo $keyin | awk '{print tolower($0)}')
         case $key in
             -h|--help)
-                echo "$usage"
+                echo "$usage" # quoting preserves newlines
                 exit 0
                 ;;
             'std')
@@ -68,13 +80,19 @@ else
                     subvars="$subvars $v"
                 fi
             done
-            ;;  
+            ;;
+            --pattern*)
+                pat="${key#*=}"
+            ;;
+            --overwrite)
+                overwrite=true
+            ;;
             *) # anything else should be a variable name
             regex='[[:space:]]+'"$key"'[[:space:]]|^'"$key"'[[:space:]]|[[:space:]]'"$key"'$|^'"$key"'$'
             if [[ $subvars =~ $regex ]]; then
                 echo "Duplicate variable: $key, will only output once"
             else
-                subvars="$subvars $key"
+                subvars="$subvars $keyin"
             fi
             ;;  
         esac
@@ -97,16 +115,44 @@ if [[ $subvars =~ $regex ]]; then
     fi
 fi
 
-# Now loop over all wrfout files in the current directory. Create a new subset file
+regex='[[:space:]]+calcmet[[:space:]]|^calcmet[[:space:]]|[[:space:]]calcmet$|^calcmet$'
+if [[ $subvars =~ $regex ]]; then
+    if [[ ! -f "$scriptdir/calculated_met_quantities.nco" ]]; then
+        echo "Cannot find the script calculated_met_quantities.nco" >&2
+        echo "in the directory $scriptdir" >&2
+        echo "$0 should be a link to the original in the directory" >&2
+        echo "containing calculated_met_quantities.nco as well" >&2
+        exit 1
+    fi
+fi
+
+# Now loop over all files matching the pattern $pat in the current directory. Create a new subset file
 # that contains only the specified variables.
-files=wrfout*
+files=$pat
 for f in $files; do
     echo "Subsetting $f"
-    savename=$(echo "$f" | sed -e 's/wrfout/wrfout_subset/')
+    # Insert "subset" after the before non alphanumeric symbol
+    savename=$(echo "$f" | sed -e 's/\(^[a-zA-Z0-9]*\)/\1_subset/')
+
+    if [[ -e $savename ]]; then
+        if ! $overwrite; then
+            echo "File $savename already exists, skipping"
+            continue
+        else
+            echo "Warning: overwriting $savename"
+        fi
+    fi
+
+    # Remove the file before doing any commands since we append to it
+    # and we want to create a fresh file.
+    rm -f "$savename"
+
     for var in $subvars; do
         echo "    Variable $var"
         if [[ $var == "calc" ]]; then
             ncap2 -A -v -S $scriptdir/calculated_quantities.nco $f $savename
+        elif [[ $var == "calcmet" ]]; then
+            ncap2 -A -v -S $scriptdir/calculated_met_quantities.nco $f $savename
         else
             ncks -A -v "$var" $f $savename
         fi
