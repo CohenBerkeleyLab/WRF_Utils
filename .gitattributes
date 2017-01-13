@@ -1,0 +1,6 @@
+# These file types are binary - so git should not try to modify or diff them
+*.mat binary
+*.jpg binary
+*.png binary
+*.fig binary
+*.pdf binary

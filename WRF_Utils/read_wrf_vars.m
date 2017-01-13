@@ -1,4 +1,4 @@
-function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dims )
+function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dims, DEBUG_LEVEL )
 %READ_WRF_VARS Reads WRF_BEHR .nc files
 %   This function will read in arbitrary variables from WRF_BEHR .nc files
 %   (the result of processing raw wrfout files using
@@ -37,7 +37,7 @@ E = JLLErrors;
 if ~ischar(filepath)
     E.badinput('filepath must be a string')
 elseif ~exist(filepath, 'dir')
-    E.badinput('%s is an invalid directory')
+    E.badinput('%s is an invalid directory', filepath)
 end
 
 if isstruct(filenames)
@@ -69,6 +69,21 @@ if ~exist('force_dims','var')
     force_dims = false;
 elseif ~isscalar(force_dims) || (~isnumeric(force_dims) && ~islogical(force_dims))
     E.badinput('force_dims, if given, must be a scalar logical or number than can be converted to a logical')
+end
+
+waitbar_bool = false;
+if ~exist('DEBUG_LEVEL','var')
+    DEBUG_LEVEL = 1;
+elseif ischar(DEBUG_LEVEL) && strcmpi('visual',DEBUG_LEVEL)
+    if isDisplay
+        waitbar_bool = true;
+        DEBUG_LEVEL = 0;
+    else
+        warning('Cannot use waitbar when running in non-GUI mode, defaulting to DEBUG_LEVEL = 1')
+        DEBUG_LEVEL = 1;
+    end
+elseif ~isscalar(DEBUG_LEVEL) || ~isnumeric(DEBUG_LEVEL)
+    E.badinput('DEBUG_LEVEL must be a scalar or the string ''visual''')
 end
     
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -129,20 +144,37 @@ end
 % Now go through each file and import each variable into the correct cell
 % in varargout, concatenating as we go.
 
+if waitbar_bool
+    wb = waitbar(0, 'Reading WRF files');
+end
+
 for d=1:n_days
-    fprintf('Reading day %d of %d: ', d, n_days);
+    if waitbar_bool
+        waitbar(d/n_days)
+    end
+    if DEBUG_LEVEL > 0
+        fprintf('Reading day %d of %d: ', d, n_days);
+    end
     for a=1:numel(varnames)
-        fprintf('%s ', varnames{a});
+        if DEBUG_LEVEL > 0 
+            fprintf('%s ', varnames{a});
+        end
         var = ncread(fullfile(filepath, filenames{d}),varnames{a});
         
         % Check that the variables have the same dimensions as the first
         % day.
-        if ndims(var) ~= numel(var_sizes{a}) || any(size(var) ~= var_sizes{a})
-            E.callError('import','%s in the file %s is not the same size as in the first .nc file (%s vs. %s in the first)', varnames{a}, filenames{a}, mat2str(size(var)), mat2str(var_sizes{a}));
-        end
+        %if (ndims(var) ~= numel(var_sizes{a}) && var_sizes{a}(end) > 1) || (var_sizes{a}(end) > 1 && any(size(var) ~= var_sizes{a}))
+        %    E.callError('import','%s in the file %s is not the same size as in the first .nc file (%s vs. %s in the first)', varnames{a}, filenames{a}, mat2str(size(var)), mat2str(var_sizes{a}));
+        %end
         varargout{a} = cat(var_dims(a), varargout{a}, var);
     end
-    fprintf('\n');
+    if DEBUG_LEVEL > 0
+        fprintf('\n');
+    end
+end
+
+if waitbar_bool
+    close(wb)
 end
 
 end
