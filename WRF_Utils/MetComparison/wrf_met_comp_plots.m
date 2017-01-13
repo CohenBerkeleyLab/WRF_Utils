@@ -171,8 +171,8 @@ end
         quantity = ask_multichoice('Which quantity to plot?', allowed_quantities, 'list', true);
         if all(d3_matches)
             nlevels = size(Match{1}.wrf_U,3);
-            levels = ask_number('Enter what model levels to plot the RMSE for (separated by a space)','default',1,'testfxn',@(x) any(x >= 1 & x <= nlevels & mod(x,1) == 0),'testmsg',...
-                sprintf('All values must be between 1 and %d and must be integers',nlevels));
+            levels = ask_number('Enter what model levels to plot the RMSE for (separated by a space)','default',1,'testfxn',@(x) any(x >= 1 & x <= 29 & mod(x,1) == 0),'testmsg',...
+                sprintf('All values must be between 1 and %d and must be integers',29));
         else
             levels = 1;
         end
