@@ -407,24 +407,36 @@ end
             wrfdir = fullfile(sharedir, wrfdir);
         end
         if ~exist('metdir','var')
-            metdir = ask_multichoice('Choose the directory with the met_em files.', {D.name}, 'list', true);
+            metdir = ask_multichoice('Choose the directory with the met_em files or wrfinput_subset files.', {D.name}, 'list', true);
             metdir = fullfile(sharedir, metdir);
         end
         if ~exist('surf_bool','var')
             levels = ask_number('Enter the levels to include in the output, separated by space. Valid levels are 1-29', 'testfxn', @(x) all(x>=1 & x<=29), 'testmsg', 'All level indices must be between 1 and 29');
         end
-        if ~exist('avgday','var')
-            user_ans = ask_multichoice('Average all available hours in a day?', {'y','n'});
-            avgday = strcmp(user_ans,'y');
-        end
-        if avgday
-            E.notimplemented('averaging to one per day');
-        end
+%         if ~exist('avgday','var')
+%             user_ans = ask_multichoice('Average all available hours in a day to a single value?', {'y','n'});
+%             avgday = strcmp(user_ans,'y');
+%         end
+%         if avgday
+%             E.notimplemented('averaging to one per day');
+%         end
         
         % Met files are usually output every three hours, wrf files every
-        % hour to half hour. Therefore, since we're supposed to be using
-        % WRF-BEHR files, the only overlap for each day will be 1800 and
-        % 2100 UTC.
+        % hour to half hour. If we're supposed to be using WRF-BEHR files,
+        % the only overlap for each day will be 1800 and 2100 UTC.
+        % Otherwise, if we have the wrfout_subset files, they should be
+        % available every three hours
+        
+        wrffiles = dir(fullfile(wrfdir, 'wrfout_subset*'));
+        if ~isempty(wrffiles)
+            all_hours = true;
+        else
+            wrffiles = dir(fullfile(wrfdir, 'WRF_BEHR*.nc'));
+            all_hours = false;
+            if isempty(wrffiles)
+                E.filenotfound('wrfout_subset* or WRF_BEHR*.nc')
+            end
+        end
         
         metfiles = dir(fullfile(metdir, 'wrfinput_subset*'));
         met_varnames.lon = 'XLONG';
@@ -445,7 +457,11 @@ end
                 E.filenotfound('wrfinput_subset* or met_em*');
             end
         end
-        metfiles = glob({metfiles.name}, '_(18|21)-00-00');
+        if ~all_hours
+            metfiles = glob({metfiles.name}, '_(18|21)-00-00');
+        else
+            metfiles = {metfiles.name};
+        end
         
         % Go ahead and load lat/lon, can use to get the size of array we
         % need
@@ -467,7 +483,6 @@ end
         % Loop through the met files. For each find the corresponding day's
         % WRF_BEHR file. 
         last_wrf_file = '';
-        wrffiles = dir(fullfile(wrfdir, 'WRF_BEHR*.nc'));
         wrffiles = {wrffiles.name};
         include_inds = true(numel(metfiles),1);
         for a = 1:numel(metfiles)
