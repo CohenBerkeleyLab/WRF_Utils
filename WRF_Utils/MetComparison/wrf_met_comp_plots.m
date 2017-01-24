@@ -497,8 +497,11 @@ end
             met_V(:,:,:,a) = met_V_a(:,:,levels);
             met_T(:,:,:,a) = met_T_a(:,:,levels);
             
-            
-            this_wrf_file = glob(wrffiles, datestr(dnum, 'yyyy-mm-dd'));
+            if ~all_hours
+                this_wrf_file = glob(wrffiles, datestr(dnum, 'yyyy-mm-dd'));
+            else
+                this_wrf_file = glob(wrffiles, datestr(dnum, 'yyyy-mm-dd_HH[:-]MM[:-]SS'));
+            end
             if isempty(this_wrf_file)
                 include_inds(a) = false;
                 continue
@@ -514,8 +517,13 @@ end
             end
             
             % Put the proper slices of WRF data in the output
-            % arrays
+            % arrays. Extraneous if using wrfout_subset files that only
+            % include a single time, but if multiple times included in the
+            % output, this is necessary.
             xx = strcmp(cellstr(wrf_times), datestr(dnum,'yyyy-mm-dd_HH:MM:SS'));
+            if sum(xx) < 1
+                E.callError('time_not_found', 'Time %s not found in WRF output file %s', datestr(dnum, 'yyyy-mm-dd_HH:MM:SS'), this_wrf_file);
+            end
             
             wrf_U(:,:,:,a) = wrf_U_a(:,:,levels,xx);
             wrf_V(:,:,:,a) = wrf_V_a(:,:,levels,xx);
