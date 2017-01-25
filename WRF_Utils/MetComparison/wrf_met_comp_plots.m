@@ -413,6 +413,7 @@ end
         if ~exist('surf_bool','var')
             levels = ask_number('Enter the levels to include in the output, separated by space. Valid levels are 1-29', 'testfxn', @(x) all(x>=1 & x<=29), 'testmsg', 'All level indices must be between 1 and 29');
         end
+        avgday = false;
 %         if ~exist('avgday','var')
 %             user_ans = ask_multichoice('Average all available hours in a day to a single value?', {'y','n'});
 %             avgday = strcmp(user_ans,'y');
