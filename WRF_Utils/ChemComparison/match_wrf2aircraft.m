@@ -32,11 +32,11 @@ function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
 %   Although this currently has inputs, they are not used in this version.
 
 campaign_name = 'dc3';
-wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_500_check'
+wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_500_prof12xUT'
 
 % TODO: modify campaign_wide_ops to handle multiple requested fields
 % Output to structure raw; anything in it will be binned
-Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
+Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
 
 
 % Convert the output chemical species here to the Raw structure, also
@@ -46,9 +46,11 @@ Raw.no = Out.data.NO_ESRL .* 1e-9 .* 1e6;
 Raw.no2 = Out.data.no2_lif .* 1e-12 .* 1e6;
 Raw.mpn = Out.data.MPN_TDLIF .* 1e-12 .* 1e6;
 Raw.hno3 = (Out.data.HNO3_SAGA + Out.data.HNO3_CIT) .* 1e-12/2 .* 1e6;
+Raw.PHOTR_NO2 = Out.data.JNO2NOO3P * 60; % WRF outputs in per minute
 Raw.lon = Out.data.LONGITUDE; % the correction to negative is west is handled in read_merge_fields
 Raw.lat = Out.data.LATITUDE;
 Raw.pres = Out.data.PRESSURE;
+
 
 Raw.co = Out.data.CO_DACOM .* 1e-9 .* 1e6;
 Raw.o3 = Out.data.O3_ESRL .* 1e-9 .* 1e6;
