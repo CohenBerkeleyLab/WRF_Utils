@@ -32,7 +32,7 @@ function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
 %   Although this currently has inputs, they are not used in this version.
 
 campaign_name = 'dc3';
-wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_500_prof12xUT'
+wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_500_newprof-fixedBC'
 
 % TODO: modify campaign_wide_ops to handle multiple requested fields
 % Output to structure raw; anything in it will be binned
