@@ -6,9 +6,18 @@ function [ Var ] = unstagger( Var, dim  )
 %   typing. This function will unstagger Var along dim by averaging
 %   adjacent values along that dimension.
 %
+%   Alternately, dim can be specified as the character X, Y, or Z as given
+%   in the wrfout attribute "stagger".
+%
 %   Josh Laughner <joshlaugh5@gmail.com> 10 Mar 2016
 
 E = JLLErrors;
+if ischar(dim)
+    if ~isscalar(dim)
+        E.badinput('dim must be a single character, if being given as a character')
+    end
+    dim = find(dim == 'XYZ');
+end
 if ~isscalar(dim) || ~isnumeric(dim) || dim > ndims(Var) || dim < 1
     E.badinput('dim must refer to a valid dimension in Var')
 end
