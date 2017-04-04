@@ -13,8 +13,12 @@ cd "$tmppath"
 scriptdir="$(pwd -P)"
 cd "$currdir"
 __me=$(basename $0)
+
 # Standard variables to include
 stdvars="Times XLONG XLAT no2 U V COSALPHA SINALPHA calc"
+
+# Variables necessary for BEHR files
+behrvars="Times XLONG XLAT P PB no2 U V COSALPHA SINALPHA"
 
 # Help text
 usage="$(basename $0) -- allows specific variables to be extracted from wrfout files into wrfout_subset files
@@ -81,6 +85,16 @@ else
                 fi
             done
             ;;
+            'behr')
+            for v in $behrvars; do
+                regex='[[:space:]]+'"$v"'[[:space:]]|^'"$v"'[[:space:]]|[[:space:]]'"$v"'$|^'"$v"'$'
+                if [[ $subvars =~ $regex ]]; then
+                    echo "Duplicate variable: $v, will only output once"
+                else
+                    subvars="$subvars $v"
+                fi
+            done
+            ;;
             --pattern*)
                 pat="${key#*=}"
             ;;
@@ -100,6 +114,9 @@ else
         shift # shift the input arguments left by one
     done
 fi
+
+echo $subvars
+exit 0
 
 # If we are using calculated quantities, then make sure we can find the calculated_quantities.nco
 # file. It is in the same directory as this file, but if this is not a link, then we won't be
