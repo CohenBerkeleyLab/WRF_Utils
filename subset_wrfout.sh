@@ -30,6 +30,8 @@ If given with no additional arguments, this will extract the following variables
 Otherwise, the argument specify the variable names (as seen in using ncview or ncdump) that you want to extract.
 There are two exceptions:
     std - will include the default variables listed above. This way, you can add to that list of variables.
+    behr - will include variables needed if the output is to be used as a priori in the BEHR retrieval.
+        Variables included are: $behrvars
     calc - will include calculated quantities including temperature (TT), number density of air (ndens),
         NO2 number density (no2_ndens), pressure (pres), altitude (z), and box height (zlev). Note that 
         these are included in std.
@@ -114,9 +116,6 @@ else
         shift # shift the input arguments left by one
     done
 fi
-
-echo $subvars
-exit 0
 
 # If we are using calculated quantities, then make sure we can find the calculated_quantities.nco
 # file. It is in the same directory as this file, but if this is not a link, then we won't be
