@@ -18,7 +18,7 @@ switch lower(plottype)
 % Functions below here aren't really meant to be called externally, but are
 % available just the same
     case 'match_wrf_met'
-        varargout{1} = match_wrf_met();
+        varargout{1} = match_wrf_met(varargin{:});
 end
 
     function plot_spatial_agreement()
@@ -428,18 +428,18 @@ end
         % Otherwise, if we have the wrfout_subset files, they should be
         % available every three hours
         
-        wrffiles = dir(fullfile(wrfdir, 'wrfout_subset*'));
+        wrffiles = dir(fullfile(wrfdir, 'wrfout_*'));
         if ~isempty(wrffiles)
             all_hours = true;
         else
             wrffiles = dir(fullfile(wrfdir, 'WRF_BEHR*.nc'));
             all_hours = false;
             if isempty(wrffiles)
-                E.filenotfound('wrfout_subset* or WRF_BEHR*.nc')
+                E.filenotfound('wrfout_* or WRF_BEHR*.nc')
             end
         end
         
-        metfiles = dir(fullfile(metdir, 'wrfinput_subset*'));
+        metfiles = dir(fullfile(metdir, 'wrfinput_*'));
         met_varnames.lon = 'XLONG';
         met_varnames.lat = 'XLAT';
         met_varnames.U = 'U';
@@ -455,7 +455,7 @@ end
             if ~isempty(metfiles)
                 warning('Could not find wrfinput_subset files, using met_em files. These are not properly interpolated to WRF vertical coordinates, so the comparisons may have greater error than expected.');
             else
-                E.filenotfound('wrfinput_subset* or met_em*');
+                E.filenotfound('wrfinput_* or met_em*');
             end
         end
         if ~all_hours
@@ -463,6 +463,13 @@ end
         else
             metfiles = {metfiles.name};
         end
+
+        metinfo = ncinfo(fullfile(metdir, metfiles{1}));
+        metvars = {metinfo.Variables.Name};
+        is_met_tt = ismember('TT', metvars);
+        wrfinfo = ncinfo(fullfile(wrfdir, wrffiles(1).name));
+        wrfvars = {wrfinfo.Variables.Name};
+        is_wrf_tt = ismember('TT', wrfvars);
         
         % Go ahead and load lat/lon, can use to get the size of array we
         % need
@@ -491,7 +498,12 @@ end
             dnum = datenum(dstr, 'yyyy-mm-dd_HH-MM-SS');
             dvec(a) = dnum;
             % Load met data
-            [met_U_a, met_V_a, met_T_a, met_cos, met_sin] = read_wrf_vars(metdir, metfiles(a), {met_varnames.U,met_varnames.V,met_varnames.T,'COSALPHA','SINALPHA'});
+            [met_U_a, met_V_a, met_cos, met_sin] = read_wrf_vars(metdir, metfiles(a), {met_varnames.U,met_varnames.V,'COSALPHA','SINALPHA'});
+            if is_met_tt
+                met_T_a = read_wrf_vars(metdir, metfiles{a}, met_varnames.T);
+            else
+                met_T_a = convert_wrf_temperature(fullfile(metdir, metfiles{a}));
+            end
             [met_U_a, met_V_a] = wrf_winds_transform(met_U_a, met_V_a, met_cos, met_sin);
             
             met_U(:,:,:,a) = met_U_a(:,:,levels);
@@ -509,7 +521,12 @@ end
             end
             this_wrf_file = this_wrf_file{1};
             if ~strcmp(this_wrf_file, last_wrf_file)
-                [wrf_U_a, wrf_V_a, wrf_T_a, wrf_cos, wrf_sin, wrf_times] = read_wrf_vars(wrfdir, {this_wrf_file}, {'U','V','TT','COSALPHA','SINALPHA','Times'});
+                [wrf_U_a, wrf_V_a, wrf_cos, wrf_sin, wrf_times] = read_wrf_vars(wrfdir, {this_wrf_file}, {'U','V','COSALPHA','SINALPHA','Times'});
+                if is_wrf_tt
+                    wrf_T_a = read_wrf_vars(wrfdir, {this_wrf_file}, 'TT');
+                else
+                    wrf_T_a = convert_wrf_temperature(fullfile(wrfdir, this_wrf_file));
+                end
                 wrf_cos = wrf_cos(:,:,1);
                 wrf_sin = wrf_sin(:,:,1);
                 [wrf_U_a, wrf_V_a] = wrf_winds_transform(wrf_U_a, wrf_V_a, wrf_cos, wrf_sin);
