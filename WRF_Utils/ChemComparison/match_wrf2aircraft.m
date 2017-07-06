@@ -32,12 +32,12 @@ function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
 %   Although this currently has inputs, they are not used in this version.
 E = JLLErrors;
 campaign_name = 'dc3';
-wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_665-fixedBC'
-%wrf_dir = '/Volumes/share-wrf1/Links/DC3-validation'
+%wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/DC3-500_mol_flash-1.5x_flashrate_nudge'
+wrf_dir = '/Volumes/share-wrf1/Links/DC3-validation'
 
 % TODO: modify campaign_wide_ops to handle multiple requested fields
 % Output to structure raw; anything in it will be binned
-Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
+Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE', 'TEMPERATURE','MixingRatio'}, 'cat', 'datefmt','datenum');
 
 
 % Convert the output chemical species here to the Raw structure, also
@@ -51,6 +51,9 @@ Raw.PHOTR_NO2 = Out.data.JNO2NOO3P * 60; % WRF outputs in per minute
 Raw.lon = Out.data.LONGITUDE; % the correction to negative is west is handled in read_merge_fields
 Raw.lat = Out.data.LATITUDE;
 Raw.pres = Out.data.PRESSURE;
+Raw.TT = Out.data.TEMPERATURE;
+Raw.QVAPOR = Out.data.MixingRatio * 1e-3; % 1) I'm assuming that "MixingRatio" is of water, since it comes from a hygrometer
+                                          % 2) The units for this mixing ratio are g/kg, in WRF it is kg/kg.
 
 
 Raw.co = Out.data.CO_DACOM .* 1e-9 .* 1e6;
