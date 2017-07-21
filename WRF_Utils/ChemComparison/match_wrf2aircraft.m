@@ -30,13 +30,14 @@ function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
 %       (chemical ionization time of flight mass spec).
 %
 %   Although this currently has inputs, they are not used in this version.
-
+E = JLLErrors;
 campaign_name = 'dc3';
-wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/iccg_eq_2-fr_factor_1-mol_flash_665-fixedBC'
+%wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/DC3-500_mol_flash-1.5x_flashrate_nudge'
+wrf_dir = '/Volumes/share-wrf1/Links/DC3-validation'
 
 % TODO: modify campaign_wide_ops to handle multiple requested fields
 % Output to structure raw; anything in it will be binned
-Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
+Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE', 'TEMPERATURE','MixingRatio'}, 'cat', 'datefmt','datenum');
 
 
 % Convert the output chemical species here to the Raw structure, also
@@ -50,6 +51,9 @@ Raw.PHOTR_NO2 = Out.data.JNO2NOO3P * 60; % WRF outputs in per minute
 Raw.lon = Out.data.LONGITUDE; % the correction to negative is west is handled in read_merge_fields
 Raw.lat = Out.data.LATITUDE;
 Raw.pres = Out.data.PRESSURE;
+Raw.TT = Out.data.TEMPERATURE;
+Raw.QVAPOR = Out.data.MixingRatio * 1e-3; % 1) I'm assuming that "MixingRatio" is of water, since it comes from a hygrometer
+                                          % 2) The units for this mixing ratio are g/kg, in WRF it is kg/kg.
 
 
 Raw.co = Out.data.CO_DACOM .* 1e-9 .* 1e6;
@@ -88,7 +92,12 @@ for a=1:numel(wrf_dvec)
     if sum(xx) > 0
         % Double check that we haven't assigned this point yet
         if any(~isnan(time_inds(xx)))
-            E.callError('time_assignment','One of the aircraft data points is being assigned to multiple WRF files');
+            if sum(~isnan(time_inds(xx))) == 1
+                wi = ~isnan(time_inds(xx));
+                warning('One of the aircraft data points (%s) is being assigned to multiple WRF files. This is probably on the edge between two WRF files.', datestr(air_dvec(wi)));
+            else
+                E.callError('time_assignment', 'Multiple aircraft data points are being assigned to multiple WRF files.');
+            end
         end
         % Only if there are any data points at this time will we keep it.
         % WRF files with no corresponding aircraft data will be removed.
@@ -124,16 +133,23 @@ wi = ncinfo(fullfile(wrf_dir, W(1).name));
 all_wrf_vars = {wi.Variables.Name};
 air_fns = fieldnames(Raw);
 wrf_vars = air_fns(ismember(air_fns, all_wrf_vars));
+convert_pres = false;
 if ~ismember('pres', wrf_vars)
-    wrf_vars{end+1} = 'pres';
+    % "pres" is a variable calculated by some of my NCO scripts when
+    % subsetting WRF output. If it's not there (i.e. reading direct WRF
+    % output) we need to compute the grid cell pressure.
+    if ismember('pres', all_wrf_vars)
+        wrf_vars{end+1} = 'pres';
+    else
+        wrf_vars{end+1} = 'P';
+        wrf_vars{end+1} = 'PB';
+        convert_pres = true;
+    end
 end
 if ismember('lnox_total', all_wrf_vars)
     wrf_vars{end+1} = 'lnox_total';
 end
-wrf_var_cell = cell(size(wrf_vars));
-[wrf_var_cell{:}] = read_wrf_vars(wrf_dir, W, wrf_vars);
-wrf_var_struct = cell2struct(wrf_var_cell, wrf_vars, 1);
-wrf_pres = wrf_var_struct.pres;
+
 
 Match.campaign = campaign_name;
 Match.data = Raw;
@@ -142,40 +158,58 @@ Match.wrf = make_empty_struct_from_cell(wrf_vars);
 Match.wrf.xlon = ncread(wi.Filename, 'XLONG');
 Match.wrf.xlat = ncread(wi.Filename, 'XLAT');
 Match.wrf.time = wrf_dvec;
+ 
 blank_vec = nan(size(Raw.lon));
 Match.indicies = struct('west_east', blank_vec, 'south_north', blank_vec, 'bottom_top', blank_vec, 'time', time_inds);
-for a=1:size(wrf_pres,1)
-    for b=1:size(wrf_pres,2)
+wrf_sz = get_wrf_array_size(wi.Filename);
+
+fprintf('Matching lat/lon\n');
+for a=1:wrf_sz(1)
+    for b=1:wrf_sz(2)
         % First check all data, if nothing falls in this cell, move on
         xx = Raw.lon >= wrf_edge_lon(a,b) & Raw.lon <= wrf_edge_lon(a+1,b);
         yy = Raw.lat >= wrf_edge_lat(a,b) & Raw.lat <= wrf_edge_lat(a,b+1);
-        if sum(xx & yy) > 0; 
+        if sum(xx & yy) > 0;
             Match.indicies.west_east(xx & yy) = a;
             Match.indicies.south_north(xx & yy) = b;
         end
     end
 end
-        
-% Now go through each data point from the aircraft and assign the vertical coordinate
-for i=1:numel(Raw.lon)
-    i_we = Match.indicies.west_east(i);
-    i_sn = Match.indicies.south_north(i);
-    i_time = Match.indicies.time(i);
-    
-    if any(isnan([i_we, i_sn, i_time])) 
-        continue
+
+for d=1:numel(W)
+    fprintf('Loading WRF file %d of %d\n', d, numel(W));
+    wrf_var_cell = cell(size(wrf_vars));
+    [wrf_var_cell{:}] = read_wrf_vars(wrf_dir, W(d), wrf_vars);
+    wrf_var_struct = cell2struct(wrf_var_cell, wrf_vars, 1);
+    if convert_pres
+        wrf_pres = (wrf_var_struct.P + wrf_var_struct.PB)/100; % convert from Pa to hPa
+    else
+        wrf_pres = wrf_var_struct.pres;
     end
+   
+    tt = find(Match.indicies.time == d);
+    i_time = d;
     
-    wrf_pres_vec = squeeze(wrf_pres(i_we, i_sn, :, i_time));
-    [~, i_bt] = min(abs(Match.data.pres(i) - wrf_pres_vec));
-    Match.indicies.bottom_top(i) = i_bt;
-    
-    % We can match the WRF data at the same time
-    for j=1:numel(wrf_vars)
-        Match.wrf.(wrf_vars{j})(i) = wrf_var_struct.(wrf_vars{j})(i_we, i_sn, i_bt, 1, i_time);
+    % Now go through each data point from the aircraft and assign the vertical coordinate
+    for i=1:numel(tt)
+        i_we = Match.indicies.west_east(tt(i));
+        i_sn = Match.indicies.south_north(tt(i));
+        
+        if any(isnan([i_we, i_sn, i_time]))
+            continue
+        end
+        
+        wrf_pres_vec = squeeze(wrf_pres(i_we, i_sn, :));
+        [~, i_bt] = min(abs(Match.data.pres(tt(i)) - wrf_pres_vec));
+        Match.indicies.bottom_top(tt(i)) = i_bt;
+        
+        % We can match the WRF data at the same time
+        for j=1:numel(wrf_vars)
+            Match.wrf.(wrf_vars{j})(tt(i)) = wrf_var_struct.(wrf_vars{j})(i_we, i_sn, i_bt);
+        end
     end
 end
-        
+
 Match.generation_date = datestr(now);
 
 
