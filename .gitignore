@@ -1,0 +1,9 @@
+# Pycharm IDE folder
+.idea
+
+# compiled python
+*.pyc
+
+# output from the movie maker
+**/*.png
+
