@@ -1,6 +1,31 @@
 function [  ] = compare_wrfout( old_dir, new_dir, varargin )
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
+%COMPARE_WRFOUT Compare several variables from two sets of WRF-Chem output
+%   COMPARE_WRFOUT( OLD_DIR, NEW_DIR ) Reads wrfout_d* files from OLD_DIR
+%   and NEW_DIR and plots the average absolute and percent difference in
+%   no, no2, o3, U, and V across all files common to both directories. If
+%   "plot_slice_gui" exists on your Matlab path, then it will be used to
+%   allow you to examine each model level at your leisure. Otherwise,
+%   pcolor will be used to plot the top and bottom levels. A list of
+%   statistics will also be printed out.
+%
+%   Additional parameters:
+%       'files' - a cell array of strings listing individual files
+%       that you wish to load. If any are missing from either OLD_DIR or
+%       NEW_DIR, an error is thrown. By default all files in common between
+%       the two directories are loaded.
+%
+%       'vars' - a cell array of strings listing which variables you wish
+%       to compare. Default is {'no', 'no2', 'o3', 'U', 'V'}. Variables
+%       will automatically be unstagged.
+%
+%       'filestem' - the beginning of the WRF-Chem output file names, used
+%       to filter out unrelated files. Default is 'wrfout_d'.
+%
+%       'maxvargb' - the maximum size a single variable loaded from two
+%       files can have in gigabytes. Because WRF-Chem output can get crazy
+%       large, this function estimates how large each variable loaded will
+%       be and halts if it exceeds this value to prevent grinding your poor
+%       computer to a halt.
 
 E = JLLErrors;
 
@@ -18,8 +43,8 @@ vars = pout.vars;
 filestem = strcat(pout.filestem,'*');
 maxvarGB = pout.maxvargb;
 
-if ~iscell(vars)
-    E.badinput('Parameter "vars" must be a cell array')
+if ~iscellstr(vars)
+    E.badinput('Parameter "vars" must be a cell array of strings')
 elseif ~ischar(filestem)
     E.badinput('Parameter "filestem" must be a string')
 end
@@ -33,8 +58,8 @@ if isempty(files)
     fnew_names = {Fnew.name};
     xx = find_common_elements(fold_names, fnew_names, 'nodup');
     files = fnew_names(xx);
-elseif ~iscell(files)
-    E.badinput('The value for parameter "files" must be a cell array')
+elseif ~iscellstr(files)
+    E.badinput('The value for parameter "files" must be a cell array of strings')
 else
     missing_files_new = {};
     missing_files_old = {};

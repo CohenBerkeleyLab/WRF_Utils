@@ -1,6 +1,6 @@
 function [ varargout ] = wrf_met_comp_plots( plottype, varargin )
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
+%WRF_MET_COMP_PLOTS Collection of plots for comparing WRF output meteorology against references.
+
 
 E = JLLErrors;
 noaa_match_dir = '/Users/Josh/Documents/MATLAB/BEHR/Workspaces/WRF/NOAA ISD Obs Comparison/';

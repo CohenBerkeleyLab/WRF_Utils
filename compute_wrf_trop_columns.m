@@ -1,6 +1,11 @@
-function [ trop_no2 ] = compute_wrf_trop_colums( wrf_filename )
-%UNTITLED2 Summary of this function goes here
-%   Detailed explanation goes here
+function [ trop_no2 ] = compute_wrf_trop_columns( wrf_filename )
+%COMPUTE_WRF_TROP_COLUMNS Calculate WRF-Chem tropospheric NO2 columns
+%   TROP_NO2 = COMPUTE_WRF_TROP_COLUMNS( WRF_FILENAME ) calculates NO2
+%   tropospheric columns in molec./cm^3 for WRF_FILENAME (a path to a WRF
+%   file that has the variables no2_ndens and zlev - currently this
+%   restricts it to files preprocessed with slurmrun/run_wrf_output.sh in
+%   the WRF-nco-tools repo). Integrates up to the tropopause calculated by
+%   FIND_WRF_TROPOPAUSE().
 
 E = JLLErrors;
 wi = ncinfo(wrf_filename);
