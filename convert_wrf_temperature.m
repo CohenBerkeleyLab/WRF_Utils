@@ -7,6 +7,9 @@ function [ T ] = convert_wrf_temperature( T, P, PB )
 %
 %   T = CONVERT_WRF_TEMPERATURE( T, P, PB ) takes the arrays containing the
 %   WRF variables T, P, and PB as inputs directly.
+%
+%   See http://mailman.ucar.edu/pipermail/wrf-users/2010/001896.html
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% INPUT CHECKING %%%%%
@@ -44,7 +47,9 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Add an offset of 300 K to the value of T since it is defined as a
-% perturbation to potential temperature.
+% perturbation to potential temperature. See
+% http://mailman.ucar.edu/pipermail/wrf-users/2013/003117.html for why we
+% add 300 even though the base state temperature is always 290.
 
 T = T+300;
 
