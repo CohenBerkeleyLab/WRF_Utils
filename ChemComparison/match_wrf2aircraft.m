@@ -1,4 +1,4 @@
-function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
+function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir, varargin )
 %MATCH_WRF2AIRCRAFT Generates a structure matching WRF output to aircraft data
 %   The output structure has three primary fields: "data", "wrf", and
 %   "indicies". It is constructed such that all the subfields in "data" and
@@ -31,14 +31,52 @@ function [ Match ] = match_wrf2aircraft( campaign_name, wrf_dir )
 %
 %   Although this currently has inputs, they are not used in this version.
 E = JLLErrors;
-campaign_name = 'dc3';
-%wrf_dir = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/DC3-500_mol_flash-1.5x_flashrate_nudge'
-wrf_dir = '/Volumes/share-wrf1/Links/DC3-validation'
+p = inputParser;
+p.addParameter('data_model',[]);
+p.addParameter('map_fxn', []);
+p.parse(varargin{:});
+pout = p.Results;
 
-% TODO: modify campaign_wide_ops to handle multiple requested fields
+data_model = pout.data_model;
+
+fprintf('Matching %s campaign data to WRF data in %s\n', campaign_name, wrf_dir);
+
+if isempty(data_model)
+    data_model = struct('no', 'NO_ESRL',...
+                        'no2', 'no2_lif',...
+                        'mpn', 'MPN_TDLIF',...
+                        'hno3', 'HNO3_SAGA',...
+                        'PHOTR_NO2', 'JNO2NOO3P',...
+                        'TT', 'TEMPERATURE',...
+                        'QVAPOR', 'MixingRatio');
+end
+
+% Add the location fields if necessary
+if ~isfield(data_model, 'lon')
+    data_model.lon = 'LONGITUDE';
+end
+if ~isfield(data_model, 'lat')
+    data_model.lat = 'LATITUDE';
+end
+if ~isfield(data_model, 'pres')
+    data_model.pres = 'PRESSURE';
+end
+
+% Make a cell array of the field to concatenate from the values of the
+% fields in data_model
+merge_fields = struct2cell(data_model);
+
+% TODO: modify campaign_wide_ops to handle multiple requested fields? Is
+% this still a todo?
 % Output to structure raw; anything in it will be binned
-Out = campaign_wide_ops(campaign_name, {'no2_lif', 'MPN_TDLIF', 'NO_ESRL', 'HNO3_SAGA', 'HNO3_CIT', 'CO_DACOM', 'O3_ESRL', 'JNO2NOO3P', 'LONGITUDE', 'LATITUDE', 'PRESSURE', 'TEMPERATURE','MixingRatio'}, 'cat', 'datefmt','datenum');
+Out = campaign_wide_ops(campaign_name, merge_fields, 'cat', 'datefmt','datenum');
 
+% Monday JLL: to handle arbitrary fields, this conversion needs to be unit
+% aware. One option is to have campaign_wide_opts return unit information
+% too, then read WRF-chem, and use convert_units. Another option is to
+% require a conversion function handle to be passed, though that's hard for
+% a first time user. Third option is just to split out the actual matching
+% code into its own function and pass it the Raw structure.
 
 % Convert the output chemical species here to the Raw structure, also
 % convert to ppm since that's how WRF outputs concentrations. Field names must
