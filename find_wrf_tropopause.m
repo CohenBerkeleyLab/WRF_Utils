@@ -36,7 +36,7 @@ E = JLLErrors;
 vars = {wrf_info.Variables.Name};
 
 if ~isstruct(wrf_info) || any(~ismember({'z','TT','pres'},vars))
-    E.badinput('wrf_info must be a structure returned from ncinfo with the variables TT, pres,  and z defined')
+    E.badinput('wrf_info must be a structure returned from ncinfo with the variables TT, pres, and z defined')
 end
 
 if ~exist('assume_top','var')
