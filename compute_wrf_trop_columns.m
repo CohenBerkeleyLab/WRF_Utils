@@ -15,7 +15,7 @@ end
 
 daily_no2 = ncread(wrf_filename, 'no2_ndens'); %[NO2 in number density]
 daily_zlev = ncread(wrf_filename, 'zlev'); % Thickness of each layer in meters
-daily_tplev = find_wrf_tropopause(wi);
+[daily_tplev] = find_wrf_tropopause(wi);
 
 for a=1:size(daily_no2,1)
     for b=1:size(daily_no2,2)
