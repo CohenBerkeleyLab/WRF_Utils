@@ -4,7 +4,9 @@ function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dim
 %   (the result of processing raw wrfout files using
 %   (slurm)run_wrf_output.sh in this folder). Requires 3 arguments:
 %
-%       FILEPATH - a path to the .nc files.
+%       FILEPATH - a path to the netCDF files. Alternatively, pass an empty
+%       string to indicate that the full path is contained in each file
+%       name.
 %
 %       FILENAMES - this can either be a structure output from the dir()
 %       function (i.e. each file is an entry in the structure, and has its
@@ -27,7 +29,6 @@ function [ varargout ] = read_wrf_vars( filepath, filenames, varnames, force_dim
 %
 %   Josh Laughner <joshlaugh5@gmail.com> 28 Aug 2015
 
-
 E = JLLErrors;
 
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -36,24 +37,11 @@ E = JLLErrors;
 
 if ~ischar(filepath)
     E.badinput('filepath must be a string')
-elseif ~exist(filepath, 'dir')
+elseif ~exist(filepath, 'dir') && ~isempty(filepath)
     E.badinput('%s is an invalid directory', filepath)
 end
 
-if isstruct(filenames)
-    if isfield(filenames, 'name')
-        filenames = {filenames.name};
-    else 
-        E.badinput('filenames does not contain the field "name"')
-    end
-end
-if iscell(filenames)
-    if any(~iscellcontents(filenames,'ischar'))
-        E.badinput('All entries in "filenames" must be strings')
-    end
-else
-    E.badinput('filenames must be a struct with field "names" or a cell array of filenames')
-end
+filenames = files_input(filenames);
 
 if ischar(varnames)
     varnames = {varnames};
@@ -93,6 +81,7 @@ end
 % Prepare varargout to hold the variables requested
 varargout = cell(size(varnames));
 n_days = numel(filenames);
+
 
 wrfi = ncinfo(fullfile(filepath, filenames{1}));
 wrf_vars = {wrfi.Variables.Name};

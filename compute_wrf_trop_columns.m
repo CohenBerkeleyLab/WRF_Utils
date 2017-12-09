@@ -7,7 +7,12 @@ function [ trop_no2 ] = compute_wrf_trop_columns( wrf_filename, integration_mode
 %   the WRF-nco-tools repo). Integrates up to the tropopause calculated by
 %   FIND_WRF_TROPOPAUSE().
 %
-%   TROP_NO2 = COMPUTE_WRF_TROP_COLUMNS( WRF_FILENAME, TROPOPAUSE )
+%   TROP_NO2 = COMPUTE_WRF_TROP_COLUMNS( WRF_FILENAME, INTEGRATION_MODE )
+%   controls whether the integration is done by assuming constant number
+%   density over each box ('box', default) or by mixing ratio over pressure
+%   using integPr2 from BEHR-core-utils ('mixing_ratio').
+%
+%   TROP_NO2 = COMPUTE_WRF_TROP_COLUMNS( WRF_FILENAME, INTEGRATION_MODE, TROPOPAUSE )
 %   integrates up to TROPOPAUSE (given in hPa) instead.
 
 E = JLLErrors;
@@ -26,12 +31,12 @@ end
 
 wi = ncinfo(wrf_filename);
 % Rely on error messages from NCREAD() if missing a variable.
-wrf_vars = read_file_vars(wrf_filename);
+wrf_vars = read_file_vars(wrf_filename, integration_mode);
 
 if isnan(tropopause)
     daily_tplev = find_wrf_tropopause(wi);
 else
-    daily_tplev = find_fixed_tropopause(wi, tropopause);
+    daily_tplev = find_fixed_tropopause(wrf_vars.pres, tropopause);
 end
 
 for a=1:size(wrf_vars.no2,1)
@@ -59,19 +64,12 @@ end
 
 end
 
-function tplev = find_fixed_tropopause(wi, tropopause)
-pres = ncread(wi.Filename, 'P') + ncread(wi.Filename, 'PB');
-p_units = ncreadatt(wi.Filename, 'P', 'units');
-pb_units = ncreadatt(wi.Filename, 'P', 'units');
-if ~strcmpi(p_units, pb_units)
-    E.notimplemented('P and PB are in different units');
-end
-pres = convert_units(pres, p_units, 'hPa');
-sz = get_wrf_array_size(wi.Filename);
+function tplev = find_fixed_tropopause(pres, tropopause)
+sz = size(pres);
 tplev = nan(sz(1:2));
 for a=1:sz(1)
     for b=1:sz(2)
-        tplev = find(pres(a,b,:) > tropopause, 1, 'last');
+        tplev(a,b) = find(pres(a,b,:) > tropopause, 1, 'last');
     end
 end
 end
@@ -82,6 +80,7 @@ if strcmpi(int_mode, 'box')
     [~, vars.zlev] = read_wrf_preproc(wrf_file, 'z');
 else
     vars.no2 = ncread(wrf_file, 'no2');
-    vars.pres = read_wrf_preproc(wrf_file, 'pressure');
 end
+% Used if finding fixed tropopause, so always include this
+vars.pres = read_wrf_preproc(wrf_file, 'pressure');
 end
