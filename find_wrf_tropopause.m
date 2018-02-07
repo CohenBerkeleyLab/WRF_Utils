@@ -76,9 +76,35 @@ tp_lev = zeros(sz_we, sz_sn, sz_time);
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
-z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
-pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
+
+wrf_vars = {wrf_info.Variables.Name};
+
+pres_precomputed = ismember('pres', wrf_vars);
+z_precomputed = ismember('z',wrf_vars);
+t_precomputed = ismember('TT',wrf_vars);
+
+if pres_precomputed
+    pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
+else
+    P = ncread(wrf_info.Filename, 'P');
+    PB = ncread(wrf_info.Filename, 'PB');
+    pres = (P+PB)/100;
+end
+
+if z_precomputed
+    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
+else
+    PH = ncread(wrf_info.Filename, 'PH');
+    PHB = ncread(wrf_info.Filename, 'PHB');
+    z_lev = (PH+PHB)/9.81;
+end
+
+if t_precomputed
+    T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
+else
+    T = ncread(wrf_info.Filename, 'T');
+    T = (300+T).*((P+PB)/1e5).^0.2854;
+end
 
 % Since T is defined at the layer center and z the edges (staggered
 % coordinates) let's convert z to non-staggered coordinates
