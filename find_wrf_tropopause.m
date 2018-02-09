@@ -1,4 +1,4 @@
-function [ tp_lev ] = find_wrf_tropopause( wrf_info, assume_top )
+function [ tp_lev , TropoPres] = find_wrf_tropopause( wrf_info, assume_top )
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
@@ -70,7 +70,7 @@ else
 end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
-
+TropoPres = zeros(sz_we, sz_sn, sz_time);
 % The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
@@ -161,6 +161,14 @@ for x = 1:sz_we
                     end
                     break
                 end
+
+                    
+            end
+                            
+            if tp_lev(x,y,t) == -1 || tp_lev(x,y,t) == 0
+                TropoPres(x,y) = pres(x,y,end);
+            else
+                TropoPres(x,y) = pres(x,y,tp_lev(x,y,t));
             end
         end
     end
