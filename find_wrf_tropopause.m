@@ -35,10 +35,6 @@ E = JLLErrors;
 
 vars = {wrf_info.Variables.Name};
 
-if ~isstruct(wrf_info) || any(~ismember({'z','TT','pres'},vars))
-    E.badinput('wrf_info must be a structure returned from ncinfo with the variables TT, pres,  and z defined')
-end
-
 if ~exist('assume_top','var')
     assume_top = false;
 end
@@ -70,40 +66,31 @@ else
 end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
+
 TropoPres = zeros(sz_we, sz_sn, sz_time);
-% The WRF pre-processor defines the tropopause as the first level where the
+tp_pres = zeros(sz_we, sz_sn, sz_time);
+%  The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-
-wrf_vars = {wrf_info.Variables.Name};
-
-pres_precomputed = ismember('pres', wrf_vars);
-z_precomputed = ismember('z',wrf_vars);
-t_precomputed = ismember('TT',wrf_vars);
-
-if pres_precomputed
-    pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
-else
-    P = ncread(wrf_info.Filename, 'P');
-    PB = ncread(wrf_info.Filename, 'PB');
-    pres = (P+PB)/100;
-end
-
-if z_precomputed
-    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
-else
-    PH = ncread(wrf_info.Filename, 'PH');
-    PHB = ncread(wrf_info.Filename, 'PHB');
-    z_lev = (PH+PHB)/9.81;
-end
-
-if t_precomputed
+if ismember(vars,'TT')
     T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
 else
-    T = ncread(wrf_info.Filename, 'T');
-    T = (300+T).*((P+PB)/1e5).^0.2854;
+    T = convert_wrf_temperature(wrf_info.Filename);
+end
+
+if ismember(vars,'z')
+    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
+else
+    z_lev = calculate_wrf_altitude(wrf_info.Filename);
+end
+
+if ismember(vars, 'pres')
+    pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
+else
+    pres = ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB');
+
 end
 
 % Since T is defined at the layer center and z the edges (staggered
@@ -138,6 +125,7 @@ for x = 1:sz_we
                 else
                     if lapse > 2
                         tp_lev(x,y,t) = z;
+                        tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
                 end
@@ -156,8 +144,10 @@ for x = 1:sz_we
                     % a cue to the user that the conditions were never met.
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
+                        tp_pres(x,y,t) = pres(x,y,sz_bt,t);
                     else
                         tp_lev(x,y,t) = -1;
+                        tp_pres(x,y,t) = 0;
                     end
                     break
                 end
