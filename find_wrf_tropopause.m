@@ -35,10 +35,6 @@ E = JLLErrors;
 
 vars = {wrf_info.Variables.Name};
 
-if ~isstruct(wrf_info) || any(~ismember({'z','TT','pres'},vars))
-    E.badinput('wrf_info must be a structure returned from ncinfo with the variables TT, pres,  and z defined')
-end
-
 if ~exist('assume_top','var')
     assume_top = false;
 end
@@ -76,9 +72,23 @@ tp_pres = zeros(sz_we, sz_sn, sz_time);
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
-z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
-pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
+if ismember(vars,'TT')
+    T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
+else
+    T = convert_wrf_temperature(wrf_info.Filename);
+end
+
+if ismember(vars,'z')
+    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
+else
+    z_lev = calculate_wrf_altitude(wrf_info.Filename);
+end
+
+if ismember(vars, 'pres')
+    pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
+else
+    pres = ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB');
+end
 
 % Since T is defined at the layer center and z the edges (staggered
 % coordinates) let's convert z to non-staggered coordinates

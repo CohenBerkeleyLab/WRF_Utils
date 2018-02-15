@@ -12,16 +12,25 @@ ncid = netcdf.open(wrffile, 'NC_NOWRITE');
 cleanupObj = onCleanup(@() thisCleanup(ncid));
 
 dim_we = netcdf.inqDimID(ncid, 'west_east');
-dim_sn = netcdf.inqDimID(ncid, 'south_north');
-dim_bt = netcdf.inqDimID(ncid, 'bottom_top');
-dim_time = netcdf.inqDimID(ncid, 'Time');
-
 [~,sz_we] = netcdf.inqDim(ncid, dim_we);
+
+dim_sn = netcdf.inqDimID(ncid, 'south_north');
 [~,sz_sn] = netcdf.inqDim(ncid, dim_sn);
+
+dim_bt = netcdf.inqDimID(ncid, 'bottom_top');
 [~,sz_bt] = netcdf.inqDim(ncid, dim_bt);
-[~,sz_time] = netcdf.inqDim(ncid, dim_time);
 
-
+try
+    dim_time = netcdf.inqDimID(ncid, 'Time');
+    [~,sz_time] = netcdf.inqDim(ncid, dim_time);
+catch err
+    if strcmp(err.identifier, 'MATLAB:imagesci:netcdf:libraryFailure')
+        warning('wrf_size:no_time', 'No "Time" dimension, assuming length 1');
+        sz_time = 1;
+    else
+        rethrow(err)
+    end
+end
 
 sz = [sz_we, sz_sn, sz_bt, sz_time];
 
