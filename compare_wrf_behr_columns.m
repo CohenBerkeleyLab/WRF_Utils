@@ -26,8 +26,8 @@ function [ col_diff, wrf_no2, behr_no2, longrid, latgrid ] = compare_wrf_behr_co
 DEBUG_LEVEL = 1;
 E = JLLErrors;
 
-behr_dir = '/Users/monicazhu/Documents/MATLAB/BEHR/TestCode-Zhu/000_test';
-%behr_prefix = 'OMI_BEHR_v2-1C_';
+behr_dir = '/Volumes/share-sat/SAT/BEHR/BEHR_Files_2014';
+behr_prefix = 'OMI_BEHR_omiCloudAMF_';
 
 
 
@@ -92,7 +92,9 @@ if DEBUG_LEVEL > 0
     fprintf('--- Averaging BEHR columns ---\n');
 end
 
-[behr_no2,~,longrid, latgrid]=behr_time_average( start_date,end_date,'behr_dir',behr_dir);
+[~, behr_no2, longrid, latgrid] = no2_column_map_2014(start_date, end_date, [-125, -65], [25 50],...
+    'behrdir', behr_dir, 'fileprefix', behr_prefix, 'makefig', false);
+
 
 % ================================================================== %
 
