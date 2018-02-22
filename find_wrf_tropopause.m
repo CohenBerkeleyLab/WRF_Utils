@@ -145,7 +145,7 @@ for x = 1:sz_we
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
                     else
                         tp_lev(x,y,t) = -1;
-                        tp_pres(x,y,t) = nan;
+                        tp_pres(x,y,t) = 0;
                     end
                     break
                 end
