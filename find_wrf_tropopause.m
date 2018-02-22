@@ -87,7 +87,7 @@ end
 if ismember( 'pres',vars)
     pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
 else
-    pres = ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB');
+    pres = (ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB'))/100;
 
 end
 
