@@ -276,7 +276,7 @@ function [W, wrf_dvec, time_inds] = match_daily_wrf_files(wrf_dirs, air_dvec)
 E = JLLErrors;
 W = [];
 for a=1:numel(wrf_dirs)
-    W = veccat(dirff(fullfile(wrf_dirs{a},'wrfout*')));
+    W = veccat(W, dirff(fullfile(wrf_dirs{a},'wrfout*')));
 end
 
 wrf_dvec = date_from_wrf_filenames(W);
@@ -306,7 +306,7 @@ for a=1:numel(wrf_dvec)
         % Double check that we haven't assigned this point yet
         if any(~isnan(time_inds(xx)))
             if sum(~isnan(time_inds(xx))) == 1
-                wi = ~isnan(time_inds(xx));
+                wi = ~isnan(time_inds) & xx;
                 warning('One of the aircraft data points (%s) is being assigned to multiple WRF files. This is probably on the edge between two WRF files.', datestr(air_dvec(wi)));
             else
                 E.callError('time_assignment', 'Multiple aircraft data points are being assigned to multiple WRF files.');

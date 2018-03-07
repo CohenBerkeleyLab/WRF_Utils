@@ -89,10 +89,11 @@ classdef match_wrf2campaigns
         function Match = dc3(prof_mode, wrf_dirs)
             campaign_name = 'dc3';
             if ~exist('wrf_dirs', 'var')
-                wrf_dirs = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/lnox_off-fixed_BCs';
+                %wrf_dirs = '/Volumes/share2/USERS/LaughnerJ/WRF/DC3/lnox_off-fixed_BCs';
+                wrf_dirs = {'/Volumes/share-wrf1/Outputs/us/2012/05','/Volumes/share-wrf1/Outputs/us/2012/06'};
             end
             if ~exist('prof_mode', 'var')
-                prof_mode = 'hourly';
+                prof_mode = 'daily';
             end
             
             % TODO: modify campaign_wide_ops to handle multiple requested fields
