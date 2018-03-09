@@ -1,4 +1,4 @@
-function [ tp_lev ] = find_wrf_tropopause( wrf_info, assume_top )
+function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
@@ -66,28 +66,29 @@ else
 end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
-
-% The WRF pre-processor defines the tropopause as the first level where the
+tp_pres = zeros(sz_we, sz_sn, sz_time);
+%  The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-if ismember(vars,'TT')
+if ismember('TT',vars)
     T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
 else
     T = convert_wrf_temperature(wrf_info.Filename);
 end
 
-if ismember(vars,'z')
+if ismember('z',vars)
     z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
 else
     z_lev = calculate_wrf_altitude(wrf_info.Filename);
 end
 
-if ismember(vars, 'pres')
+if ismember( 'pres',vars)
     pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
 else
-    pres = ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB');
+    pres = (ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB'))/100;
+
 end
 
 % Since T is defined at the layer center and z the edges (staggered
@@ -122,6 +123,7 @@ for x = 1:sz_we
                 else
                     if lapse > 2
                         tp_lev(x,y,t) = z;
+                        tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
                 end
@@ -140,12 +142,17 @@ for x = 1:sz_we
                     % a cue to the user that the conditions were never met.
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
+                        tp_pres(x,y,t) = pres(x,y,sz_bt,t);
                     else
                         tp_lev(x,y,t) = -1;
+                        tp_pres(x,y,t) = 0;
                     end
                     break
                 end
+
+                    
             end
+
         end
     end
 end
