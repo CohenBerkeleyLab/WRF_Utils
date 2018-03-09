@@ -99,14 +99,14 @@ for x = 1:sz_we
     for y = 1:sz_sn
         for t = 1:sz_time
             lt_2Kkm = false;
-            for z = (sz_bt-1):(-1):1
+            for z = (sz_bt-4):(-1):1
                 % Go from the top down. Once we find 1 case where the lapse
                 % rate is < 2 K/km, search until we hit one > 2 K/km
                 
                 % Include the top two lapse rates, but they'll need
                 % calculated specially (since there's not 3 layers to
                 % average)
-                if sz_bt - z == 1 || sz_bt - z == 2
+                if sz_bt - z == 1 || sz_bt - z == 2 
                     end_ind = sz_bt;
                 else
                     end_ind = z + 3;
@@ -116,17 +116,18 @@ for x = 1:sz_we
                 % convert it to km so the lapse rate is K/km. Also take the negative since
                 % lapse rate is defined as -dT/dz.
                 lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
+                
                 if ~lt_2Kkm
                     if lapse < 2
                         lt_2Kkm = true;
                     end
                 else
-                    if lapse > 2
+                    if lapse > 2 
                         tp_lev(x,y,t) = z;
                         tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
-                end
+                end  
                 
                 % Reject if the pressure is >500 hPa (i.e. below the 500
                 % hPa altitude). This is part of the WMO definition of
@@ -140,6 +141,50 @@ for x = 1:sz_we
                     % assume that we didn't see a tropopause b/c it was
                     % above the top box.  Otherwise, set the level as -1 as
                     % a cue to the user that the conditions were never met.
+                    tp_lev(x,y,t) = -1;
+                    break
+                end
+                
+            end
+          
+            if tp_lev(x,y,t) == -1
+                lt_2Kkm = false;
+                for z = (sz_bt-1):(-1):1
+                    % Go from the top down. Once we find 1 case where the lapse
+                    % rate is < 2 K/km, search until we hit one > 2 K/km
+
+                    % Include the top two lapse rates, but they'll need
+                    % calculated specially (since there's not 3 layers to
+                    % average)
+                    if sz_bt - z == 1 || sz_bt - z == 2 
+                        end_ind = sz_bt;
+                    else
+                        end_ind = z + 3;
+                    end
+
+                    % Calculate the lapse rate in three layer chunks. z is in meters, so
+                    % convert it to km so the lapse rate is K/km. Also take the negative since
+                    % lapse rate is defined as -dT/dz.
+                    lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
+
+                    if ~lt_2Kkm
+                        if lapse < 2
+                            lt_2Kkm = true;
+                        end
+                    else
+                        if lapse > 2 
+                            tp_lev(x,y,t) = z;
+                            tp_pres(x,y,t) = pres(x,y,z,t);
+                            break
+                        end
+                    end
+
+                    if pres(x,y,z,t) > 500;
+                    % If we never found any point with a lapse rate < 2
+                    % K/km at all and the assume_top parameter is set,
+                    % assume that we didn't see a tropopause b/c it was
+                    % above the top box.  Otherwise, set the level as -1 as
+                    % a cue to the user that the conditions were never met.
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
@@ -148,11 +193,9 @@ for x = 1:sz_we
                         tp_pres(x,y,t) = 0;
                     end
                     break
+                    end            
                 end
-
-                    
             end
-
         end
     end
 end
