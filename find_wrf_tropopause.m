@@ -91,6 +91,8 @@ else
 
 end
 
+wrf_lon = ncread(wrf_info.Filename,'XLONG');
+wrf_lat = ncread(wrf_info.Filename,'XLAT');
 % Since T is defined at the layer center and z the edges (staggered
 % coordinates) let's convert z to non-staggered coordinates
 z_lev = (z_lev(:,:,2:end,:)+z_lev(:,:,1:end-1,:))/2;
@@ -99,7 +101,7 @@ for x = 1:sz_we
     for y = 1:sz_sn
         for t = 1:sz_time
             lt_2Kkm = false;
-            for z = (sz_bt-4):(-1):1
+            for z = (sz_bt-1):(-1):1
                 % Go from the top down. Once we find 1 case where the lapse
                 % rate is < 2 K/km, search until we hit one > 2 K/km
                 
@@ -141,65 +143,93 @@ for x = 1:sz_we
                     % assume that we didn't see a tropopause b/c it was
                     % above the top box.  Otherwise, set the level as -1 as
                     % a cue to the user that the conditions were never met.
-                    tp_lev(x,y,t) = -1;
-                    break
-                end
-                
-            end
-          
-            if tp_lev(x,y,t) == -1
-                lt_2Kkm = false;
-                for z = (sz_bt-1):(-1):1
-                    % Go from the top down. Once we find 1 case where the lapse
-                    % rate is < 2 K/km, search until we hit one > 2 K/km
-
-                    % Include the top two lapse rates, but they'll need
-                    % calculated specially (since there's not 3 layers to
-                    % average)
-                    if sz_bt - z == 1 || sz_bt - z == 2 
-                        end_ind = sz_bt;
-                    else
-                        end_ind = z + 3;
-                    end
-
-                    % Calculate the lapse rate in three layer chunks. z is in meters, so
-                    % convert it to km so the lapse rate is K/km. Also take the negative since
-                    % lapse rate is defined as -dT/dz.
-                    lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
-
-                    if ~lt_2Kkm
-                        if lapse < 2
-                            lt_2Kkm = true;
-                        end
-                    else
-                        if lapse > 2 
-                            tp_lev(x,y,t) = z;
-                            tp_pres(x,y,t) = pres(x,y,z,t);
-                            break
-                        end
-                    end
-
-                    if pres(x,y,z,t) > 500;
-                    % If we never found any point with a lapse rate < 2
-                    % K/km at all and the assume_top parameter is set,
-                    % assume that we didn't see a tropopause b/c it was
-                    % above the top box.  Otherwise, set the level as -1 as
-                    % a cue to the user that the conditions were never met.
+%                     tp_lev(x,y,t) = -1;
+%                     break
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
                     else
                         tp_lev(x,y,t) = -1;
-                        tp_pres(x,y,t) = 0;
+                        tp_pres(x,y,t) = nan;
                     end
                     break
-                    end            
                 end
+                
+            end
+          
+            lt_2Kkm = false;
+            for z = (sz_bt-4):(-1):1
+                % Go from the top down. Once we find 1 case where the lapse
+                % rate is < 2 K/km, search until we hit one > 2 K/km
+
+                % Include the top two lapse rates, but they'll need
+                % calculated specially (since there's not 3 layers to
+                % average)
+                if sz_bt - z == 1 || sz_bt - z == 2 
+                    end_ind = sz_bt;
+                else
+                    end_ind = z + 3;
+                end
+
+                % Calculate the lapse rate in three layer chunks. z is in meters, so
+                % convert it to km so the lapse rate is K/km. Also take the negative since
+                % lapse rate is defined as -dT/dz.
+                lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
+
+                if ~lt_2Kkm
+                    if lapse < 2
+                        lt_2Kkm = true;
+                    end
+                else
+                    if lapse > 2 
+                        tp_lev(x,y,t) = z;
+                        tp_pres(x,y,t) = pres(x,y,z,t);
+                        break
+                    end
+                end
+
+                if pres(x,y,z,t) > 500;
+                break
+                end            
             end
         end
     end
 end
 
+plume = logical(zeros(size(tp_pres)));
+
+for y = 1:sz_sn
+    for t = 1:sz_time
+        tp_pres_median = nanmedian(tp_pres(:,y,t));
+        tp_pres_diff = abs(tp_pres(2:end,y,t)-tp_pres(1:end-1,y,t));
+        dp_pres = find(tp_pres_diff >= 50);
+        
+    for i = 1:numel(dp_pres)
+        tp_pres_sm = min(tp_pres(dp_pres(i),y,t),tp_pres(dp_pres(i)+1,y,t));
+        tp_pres_lg = max(tp_pres(dp_pres(i),y,t),tp_pres(dp_pres(i)+1,y,t));
+        tolerance_pres = quantile(tp_pres_diff,0.7);
+        
+        if (tp_pres_sm+tp_pres_lg) < 2*tp_pres_median
+            center_pt = tp_pres_sm;
+        else
+            center_pt = tp_pres_lg;
+        end
+        
+        threshold = @(t) abs(t) < tolerance_pres;
+        center_lon = wrf_lon(dp_pres(i),y);
+        center_lat = wrf_lat(dp_pres(i),y);
+        if ~plume(dp_pres(i),y) 
+            [in_plume, edge_pixels] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
+            plume = plume | in_plume;
+        end
+        
+    end
+    end    
+ end
+
+tp_pres(plume) = nan;
+tp_lev(plume) = -1;
+tp_pres(isnan(tp_pres)) = 0;
 
 end
 
