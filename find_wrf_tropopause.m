@@ -1,4 +1,4 @@
-function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
+function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info)
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
@@ -67,6 +67,7 @@ end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
 tp_pres = zeros(sz_we, sz_sn, sz_time);
+interp_flag = false(sz_we, sz_sn, sz_time);
 %  The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
@@ -203,27 +204,40 @@ plume = false(size(tp_pres));
 % search center points along the altitude, locate the adjacent points
 % with sharp changes in tropopause pressure and set the first point as
 % center point in the function find_plume
-for y = 1:sz_sn
-    for t = 1:sz_time
-        tp_pres_diff = abs(tp_pres(2:end,y,t)-tp_pres(1:end-1,y,t));
+ for yy = 1:sz_sn
+    for tt = 1:sz_time
+        tp_pres_diff = abs(tp_pres(2:end,yy,tt)-tp_pres(1:end-1,yy,tt));
         dp_pres = find(tp_pres_diff >= 50);
     for i = 1:numel(dp_pres)
         % With some test, quantile(tp_pres_diff,0.7) is always around 0.5 pa.
-        tolerance_pres = quantile(tp_pres_diff,0.7);
-        threshold = @(t) abs(t) < tolerance_pres;
-        center_lon = wrf_lon(dp_pres(i),y);
-        center_lat = wrf_lat(dp_pres(i),y);
-        if ~plume(dp_pres(i),y) 
-            [in_plume, ~] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
+        %tolerance_pres = quantile(tp_pres_diff,0.7)
+       if ~plume(dp_pres(i),yy)
+            tolerance_pres = quantile(tp_pres_diff,0.7);
+            threshold = @(t) abs(t) < tolerance_pres;
+            center_lon = wrf_lon(dp_pres(i),yy);
+            center_lat = wrf_lat(dp_pres(i),yy);  
+            [in_plume] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
             plume = plume | in_plume;
         end
     end
     end    
  end
+[indx_x, indx_y] = find(plume == 0);
+
+for i =1:numel(indx_x)
+    if indx_x(i)>1 && indx_x(i)<sz_we && indx_y(i)>1 && indx_y(i)<sz_sn
+    ju = sum(plume(indx_x(i)+1,indx_y(i))+plume(indx_x(i)-1,indx_y(i))+plume(indx_x(i),indx_y(i)+1)+plume(indx_x(i),indx_y(i)-1));
+    if ju >=2
+        plume(indx_x(i),indx_y(i))=1;
+    end
+    end 
+end
 
 tp_pres(plume) = nan;
 tp_lev(plume) = -1;
 tp_pres(isnan(tp_pres)) = 0;
-
+    
 end
+
+
 
