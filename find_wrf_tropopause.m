@@ -117,7 +117,7 @@ for x = 1:sz_we
                 % Calculate the lapse rate in three layer chunks. z is in meters, so
                 % convert it to km so the lapse rate is K/km. Also take the negative since
                 % lapse rate is defined as -dT/dz.
-                lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);    
+                lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
                 if ~lt_2Kkm
                     if lapse < 2
                         lt_2Kkm = true;
@@ -166,11 +166,7 @@ for x = 1:sz_we
             % 
             lt_2Kkm = false;
             for z = (sz_bt-4):(-1):1
-                if sz_bt - z == 1 || sz_bt - z == 2 
-                    end_ind = sz_bt;
-                else
-                    end_ind = z + 3;
-                end
+                end_ind = z + 3;
                 lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
 
                 if ~lt_2Kkm
