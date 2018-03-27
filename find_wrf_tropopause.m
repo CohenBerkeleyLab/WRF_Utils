@@ -1,4 +1,4 @@
-function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info)
+function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top)
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
