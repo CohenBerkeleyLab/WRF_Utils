@@ -67,7 +67,7 @@ end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
 tp_pres = zeros(sz_we, sz_sn, sz_time);
-interp_flag = false(sz_we, sz_sn, sz_time);
+
 %  The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
@@ -150,7 +150,7 @@ for x = 1:sz_we
                         tp_lev(x,y,t) = sz_bt;
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
                     else
-                        tp_lev(x,y,t) = -1;
+                        tp_lev(x,y,t) = nan;
                         tp_pres(x,y,t) = nan;
                     end
                     break
@@ -201,6 +201,7 @@ end
 % tp_pres to be 0. In rProfile_WRF, the points with zero pressures will
 % be interpolated.
 plume = false(size(tp_pres));
+
 % search center points along the altitude, locate the adjacent points
 % with sharp changes in tropopause pressure and set the first point as
 % center point in the function find_plume
@@ -210,7 +211,6 @@ plume = false(size(tp_pres));
         dp_pres = find(tp_pres_diff >= 50);
     for i = 1:numel(dp_pres)
         % With some test, quantile(tp_pres_diff,0.7) is always around 0.5 pa.
-        %tolerance_pres = quantile(tp_pres_diff,0.7)
        if ~plume(dp_pres(i),yy)
             tolerance_pres = quantile(tp_pres_diff,0.7);
             threshold = @(t) abs(t) < tolerance_pres;
@@ -222,21 +222,42 @@ plume = false(size(tp_pres));
     end
     end    
  end
-[indx_x, indx_y] = find(plume == 0);
-
-for i =1:numel(indx_x)
-    if indx_x(i)>1 && indx_x(i)<sz_we && indx_y(i)>1 && indx_y(i)<sz_sn
-    ju = sum(plume(indx_x(i)+1,indx_y(i))+plume(indx_x(i)-1,indx_y(i))+plume(indx_x(i),indx_y(i)+1)+plume(indx_x(i),indx_y(i)-1));
-    if ju >=2
-        plume(indx_x(i),indx_y(i))=1;
-    end
-    end 
-end
-
+ 
+ 
 tp_pres(plume) = nan;
-tp_lev(plume) = -1;
+tp_lev(plume) = nan;
+
+% second run of filter: devide the map by 50X30 tails, in each tail find the
+% grid cell that the tropopause pressure is 70hpa larger or lower than the median tropopause pressure,
+% set it to be nan;
+
+ bulk = [50,30];
+ s1 = fix(sz_we/bulk(1));
+ s2 = fix(sz_sn/bulk(2));
+ 
+ for i=1:s1
+     for j=1:s2
+         if j ==s2
+             ybulk = bulk(2)*(j-1)+1:max(bulk(2)*j,sz_sn);
+         else
+             ybulk = bulk(2)*(j-1)+1:bulk(2)*j;
+         end
+         if i ==s1
+             xbulk = bulk(1)*(i-1)+1:max(bulk(1)*i,sz_we);
+         else
+             xbulk = bulk(1)*(i-1)+1:bulk(1)*i;
+         end
+         pres_bulk = tp_pres(xbulk,ybulk);
+         median_pres = nanmedian(pres_bulk(:));
+         diff = abs(pres_bulk-median_pres);
+         indx = diff >70;
+         pres_bulk(indx) = nan;
+         tp_pres(xbulk,ybulk) = pres_bulk;
+     end
+ end
+
 tp_pres(isnan(tp_pres)) = 0;
-    
+tp_lev(isnan(tp_lev)) = -1;  
 end
 
 
