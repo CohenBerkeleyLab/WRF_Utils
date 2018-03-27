@@ -1,4 +1,4 @@
-function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top)
+function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
@@ -67,7 +67,6 @@ end
     
 tp_lev = zeros(sz_we, sz_sn, sz_time);
 tp_pres = zeros(sz_we, sz_sn, sz_time);
-
 %  The WRF pre-processor defines the tropopause as the first level where the
 % average lapse rate over 3 layers is < 2 K/km. So we calculate the lapse
 % rate averaged over 3 bins and look for the lowest one that meets the
@@ -109,7 +108,7 @@ for x = 1:sz_we
                 % Include the top two lapse rates, but they'll need
                 % calculated specially (since there's not 3 layers to
                 % average)
-                if sz_bt - z == 1 || sz_bt - z == 2 
+                if sz_bt - z == 1 || sz_bt - z == 2
                     end_ind = sz_bt;
                 else
                     end_ind = z + 3;
@@ -118,19 +117,18 @@ for x = 1:sz_we
                 % Calculate the lapse rate in three layer chunks. z is in meters, so
                 % convert it to km so the lapse rate is K/km. Also take the negative since
                 % lapse rate is defined as -dT/dz.
-                lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
-                
+                lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);    
                 if ~lt_2Kkm
                     if lapse < 2
                         lt_2Kkm = true;
                     end
                 else
-                    if lapse > 2 
+                    if lapse > 2
                         tp_lev(x,y,t) = z;
                         tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
-                end  
+                end 
                 
                 % Reject if the pressure is >500 hPa (i.e. below the 500
                 % hPa altitude). This is part of the WMO definition of
@@ -144,8 +142,7 @@ for x = 1:sz_we
                     % assume that we didn't see a tropopause b/c it was
                     % above the top box.  Otherwise, set the level as -1 as
                     % a cue to the user that the conditions were never met.
-%                     tp_lev(x,y,t) = -1;
-%                     break
+
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
