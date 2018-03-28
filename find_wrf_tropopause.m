@@ -4,7 +4,13 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
 %   This replicates that calculation. 
 %
-%   The only required input is a structure obtained from ncinfo that points
+%   [ TP_LEV, TP_PRES ] = FIND_WRF_TROPOPAUSE( WRF_INFO ) returns the model
+%   level that the tropopause resides in as TP_LEV and the pressure of that
+%   model level and TP_PRES. Both will have size west_east by south_north
+%   by time. If it fails to identify the tropopause, then it will return -1
+%   for the level and 0 for the pressure.
+%
+%   WRF_INFO is a structure obtained from ncinfo that points
 %   to a netCDF file of WRF output that contains the calculated quantities
 %   TT (actual temperature), z (altitude calculated from geopotential), and
 %   pres (pressure). Both of these will be calculated if you use the
@@ -12,18 +18,21 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %   (slurm)run_wrf_output.sh - these quantities will not be in regular WRF
 %   output).
 %
+%   [ __ ] = FIND_WRF_TROPOPAUSE( WRF_INFO, true ) if the tropopause isn't
+%   found, assume that it lies above the model domain. This will return the
+%   top model layer and pressure for those locations.
+%
 %   This function works by starting at the top of each vertical profile and
 %   moving downwards, looking for the last group of 3 model layers that
 %   have an average lapse rate < 2 K/km.  It will stop at z = 3000 m, to
 %   avoid accidentally detecting a temperature inversion.  If it reaches
 %   the 3000 m cutoff, it will by default assign a value of -1 as the
 %   tropopause level, which should be interpreted as indicating that the
-%   algorithm failed to find a tropopause.  This behavior can be overridden
-%   by passing "true" as the optional second parameter. In this mode, it
-%   will check to see if the lapse rate was ever < 2 K/km. If not, it will
-%   assume that it did not find a tropopause because all layers in that
-%   profile are below it, and so the tropopause level will be set to the
-%   top-most index.
+%   algorithm failed to find a tropopause.  By passing "true" as the
+%   optional second parameter, it will check to see if the lapse rate was
+%   ever < 2 K/km. If not, it will assume that it did not find a tropopause
+%   because all layers in that profile are below it, and so the tropopause
+%   level will be set to the top-most index.
 %
 %   Josh Laughner <joshlaugh5@gmail.com> 20 Jul 2015
 
