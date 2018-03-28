@@ -11,12 +11,11 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %   for the level and 0 for the pressure.
 %
 %   WRF_INFO is a structure obtained from ncinfo that points
-%   to a netCDF file of WRF output that contains the calculated quantities
-%   TT (actual temperature), z (altitude calculated from geopotential), and
-%   pres (pressure). Both of these will be calculated if you use the
-%   "calculated_quantities.nco" script (which you can run using
-%   (slurm)run_wrf_output.sh - these quantities will not be in regular WRF
-%   output).
+%   to a netCDF file of WRF output. It must contain information about
+%   temperature, elevation, pressure, latitude, and longitude. The first
+%   three quantities can be either calculated by calculated_quantities.nco
+%   or available in the "raw" form (i.e. potential temperature,
+%   geopotential height, and base + perturbation pressure).
 %
 %   [ __ ] = FIND_WRF_TROPOPAUSE( WRF_INFO, true ) if the tropopause isn't
 %   found, assume that it lies above the model domain. This will return the
@@ -32,9 +31,25 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %   optional second parameter, it will check to see if the lapse rate was
 %   ever < 2 K/km. If not, it will assume that it did not find a tropopause
 %   because all layers in that profile are below it, and so the tropopause
-%   level will be set to the top-most index.
+%   level will be set to the top-most index. It also does three additional
+%   filtering steps:
 %
-%   Josh Laughner <joshlaugh5@gmail.com> 20 Jul 2015
+%       1) It reruns the above lapse rate calculation omitting the top
+%       three layers, and sees if it gets the same tropopause level. If
+%       not, it prefers the lower one. This helps catch unexpectely high
+%       tropopause levels if the laps rate near the top dips below 2 K/km.
+%
+%       2) It looks for big jumps along the zonal direction, assuming that
+%       the tropopause pressure will be reasonably invariant along the same
+%       latitude (actually the same south_north row in the WRF output). If
+%       there is a jump, it finds the region that has a jump of >= 50 hPa
+%       compared to the rest of the zonal band and marks that it could not
+%       find a valid tropopause there.
+%
+%       3) Finally, it compares the values of each tropopause pressure to
+%       the median in a 50-by-30 chunk and any pressure that exceeds a 70
+%       hPa difference compared to the chunk median is marked as "could not
+%       find tropopause".
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% INPUT CHECKING %%%%%
@@ -81,23 +96,9 @@ tp_pres = zeros(sz_we, sz_sn, sz_time);
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-if ismember('TT',vars)
-    T = ncread(wrf_info.Filename, 'TT'); % temperature of each level in K
-else
-    T = convert_wrf_temperature(wrf_info.Filename);
-end
-
-if ismember('z',vars)
-    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters
-else
-    z_lev = calculate_wrf_altitude(wrf_info.Filename);
-end
-
-if ismember( 'pres',vars)
-    pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
-else
-    pres = (ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB'))/100;
-end
+T = read_wrf_preproc(wrf_info.Filename, 'temperature');
+z_lev = read_wrf_preproc(wrf_info.Filename, 'elevation');
+pres = read_wrf_preproc(wrf_info.Filename, 'pressure');
 
 wrf_lon = ncread(wrf_info.Filename,'XLONG');
 wrf_lat = ncread(wrf_info.Filename,'XLAT');
@@ -200,15 +201,15 @@ for x = 1:sz_we
     end
 end
 
-% Considering the weakness of this algorithm, plume is intended to find the
-% points with absurd tropopause pressure and set the tp_lev to be -1 and
-% tp_pres to be 0, i.e. not found. This can be interpolated by the calling
-% function if desired.
-plume = false(size(tp_pres));
+% Considering the weakness of this algorithm, floodfill is intended to find
+% the points with absurd tropopause pressure and set the tp_lev to be -1
+% and tp_pres to be 0, i.e. not found. This can be interpolated by the
+% calling function if desired.
+xx_bad_trop = false(size(tp_pres));
 
 % search center points along the altitude, locate the adjacent points
 % with sharp changes in tropopause pressure and set the first point as
-% center point in the function find_plume
+% center point in the function floodfill
 for y = 1:sz_sn
     for t = 1:sz_time
         tp_pres_diff = abs(tp_pres(2:end,y,t)-tp_pres(1:end-1,y,t));
@@ -216,27 +217,33 @@ for y = 1:sz_sn
         for i = 1:numel(dp_pres)
             % With some test, quantile(tp_pres_diff,0.7) is always around
             % 0.5 pa. (Pa or hPa?)
-            if ~plume(dp_pres(i),y)
+            % Need to keep an eye on this - there might occur a case where
+            % the bad tropopause values are at the edge of the domain and I
+            % think this might mark the good tropopause as bad because it
+            % comes across the jump from bad --> good.
+            if ~xx_bad_trop(dp_pres(i),y)
                 tolerance_pres = quantile(tp_pres_diff,0.7);
                 threshold = @(t) abs(t) < tolerance_pres;
                 center_lon = wrf_lon(dp_pres(i),y);
                 center_lat = wrf_lat(dp_pres(i),y);
-                [in_plume] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
-                plume = plume | in_plume;
+                [in_plume] = floodfill(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
+                xx_bad_trop = xx_bad_trop | in_plume;
             end
         end
     end
 end
 
 
-tp_pres(plume) = nan;
-tp_lev(plume) = nan;
+tp_pres(xx_bad_trop) = nan;
+tp_lev(xx_bad_trop) = nan;
 
 % second run of filter: devide the map by 50X30 chunks, in each chunk find
 % the grid cell that the tropopause pressure is 70hpa larger or lower than
 % the median tropopause pressure, set it to be nan; (Why 70 hPa here, why
 % 50x30 chunks?)
 
+% This chunk size was selected for WRF domains at 12 km resolution. It may
+% need adjusted in the future to be grid spacing-aware.
 bulk = [50,30];
 s1 = fix(sz_we/bulk(1));
 s2 = fix(sz_sn/bulk(2));
@@ -255,8 +262,8 @@ for i=1:s1
         end
         pres_bulk = tp_pres(xbulk,ybulk);
         median_pres = nanmedian(pres_bulk(:));
-        diff = abs(pres_bulk-median_pres);
-        indx = diff >70;
+        pres_diff = abs(pres_bulk-median_pres);
+        indx = pres_diff > 70;
         pres_bulk(indx) = nan;
         tp_pres(xbulk,ybulk) = pres_bulk;
     end
@@ -265,6 +272,3 @@ end
 tp_pres(isnan(tp_pres)) = 0;
 tp_lev(isnan(tp_lev)) = -1;
 end
-
-
-
