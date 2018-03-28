@@ -2,7 +2,8 @@ classdef match_wrf2campaigns
     %UNTITLED2 Summary of this class goes here
     %   Detailed explanation goes here
     
-    properties
+    properties(Constant = true)
+        
     end
     
     methods(Static = true)
@@ -32,7 +33,7 @@ classdef match_wrf2campaigns
                 prof_mode = 'daily';
             end
             if ~exist('wrf_dirs', 'var')
-                wrf_dirs = '';
+                wrf_dirs = {'/Volumes/share-wrf1/Outputs/us/2013/01', '/Volumes/share-wrf1/Outputs/us/2013/02'};
             end
             
             Out = campaign_wide_ops(campaign_name, {'NO2_MixingRatio_LIF', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
@@ -52,7 +53,7 @@ classdef match_wrf2campaigns
                 prof_mode = 'daily';
             end
             if ~exist('wrf_dirs', 'var')
-                wrf_dirs = '';
+                wrf_dirs = {'/Volumes/share-wrf1/Outputs/us/2013/09'};
             end
             
             Out = campaign_wide_ops(campaign_name, {'NO2_MixingRatio_LIF', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');
@@ -72,7 +73,7 @@ classdef match_wrf2campaigns
                 prof_mode = 'daily';
             end
             if ~exist('wrf_dirs', 'var')
-                wrf_dirs = '';
+                wrf_dirs = {'/Volumes/share-wrf1/Outputs/us/2014/07','/Volumes/share-wrf1/Outputs/us/2014/08'};
             end
             
             Out = campaign_wide_ops(campaign_name, {'NO2_LIF', 'LONGITUDE', 'LATITUDE', 'PRESSURE'}, 'cat', 'datefmt','datenum');

@@ -77,6 +77,8 @@ if ischar(wrf_dirs)
     wrf_dirs = {wrf_dirs};
 elseif ~iscellstr(wrf_dirs)
     E.badinput('WRF_DIRS must be a string or cell array or strings');
+else
+    fprintf('match_wrf2aircraft: will look for WRF-Chem data in:\n\t%s\n\n', strjoin(wrf_dirs, '\n\t'));
 end
 
 xx_exist = cellfun(@(d) exist(d, 'dir'), wrf_dirs);
