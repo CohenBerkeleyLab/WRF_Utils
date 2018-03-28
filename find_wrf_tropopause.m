@@ -2,7 +2,7 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
-%   This replicates that calculation. 
+%   This replicates that calculation.
 %
 %   [ TP_LEV, TP_PRES ] = FIND_WRF_TROPOPAUSE( WRF_INFO ) returns the model
 %   level that the tropopause resides in as TP_LEV and the pressure of that
@@ -73,7 +73,7 @@ if sum(dd) == 0
 else
     sz_time = wrf_info.Dimensions(dd).Length;
 end
-    
+
 tp_lev = zeros(sz_we, sz_sn, sz_time);
 tp_pres = zeros(sz_we, sz_sn, sz_time);
 %  The WRF pre-processor defines the tropopause as the first level where the
@@ -88,7 +88,7 @@ else
 end
 
 if ismember('z',vars)
-    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters  
+    z_lev = ncread(wrf_info.Filename, 'z'); % layer thickness in meters
 else
     z_lev = calculate_wrf_altitude(wrf_info.Filename);
 end
@@ -97,7 +97,6 @@ if ismember( 'pres',vars)
     pres = ncread(wrf_info.Filename, 'pres'); % model box center pressure in hPa
 else
     pres = (ncread(wrf_info.Filename, 'P') + ncread(wrf_info.Filename, 'PB'))/100;
-
 end
 
 wrf_lon = ncread(wrf_info.Filename,'XLONG');
@@ -137,7 +136,7 @@ for x = 1:sz_we
                         tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
-                end 
+                end
                 
                 % Reject if the pressure is >500 hPa (i.e. below the 500
                 % hPa altitude). This is part of the WMO definition of
@@ -145,13 +144,13 @@ for x = 1:sz_we
                 % this unless it is the only one.  We are likewise going to
                 % always reject these because surface temperature
                 % inversions will confuse the algorithm.
-                if pres(x,y,z,t) > 500;
+                if pres(x,y,z,t) > 500
                     % If we never found any point with a lapse rate < 2
                     % K/km at all and the assume_top parameter is set,
                     % assume that we didn't see a tropopause b/c it was
                     % above the top box.  Otherwise, set the level as -1 as
                     % a cue to the user that the conditions were never met.
-
+                    
                     if assume_top && ~lt_2Kkm
                         tp_lev(x,y,t) = sz_bt;
                         tp_pres(x,y,t) = pres(x,y,sz_bt,t);
@@ -163,36 +162,39 @@ for x = 1:sz_we
                 end
                 
             end
+            
             % Here we found if searching lapse rate larger than 2 from top
             % down, in some cases the lapse rate in the first three layers
             % are slightly over 2 so the function above will recognize it
             % as tropopause pressure. However, it will cause the sharp
             % change of tropopause pressure in adjacent grid cells. To get
             % rid of this, we omit the top three layers and search lapse
-            % rate again. If we find 1 case where the laps rate is < 2 K/km, 
-            % and also hit one > 2 K/km from the lower layers, tropopause
-            % pressure will be replace by lower value.
-            % 
+            % rate again. If we find 1 case where the lapse rate is < 2
+            % K/km, and also hit one > 2 K/km from the lower layers,
+            % tropopause pressure will be replace by lower value. If this
+            % results in oddly high (low altitude) tropopause, it should be
+            % caught later in the code.
+            %
             lt_2Kkm = false;
             for z = (sz_bt-4):(-1):1
                 end_ind = z + 3;
                 lapse = -(T(x,y,end_ind,t) - T(x,y,z,t))/((z_lev(x,y,end_ind,t)-z_lev(x,y,z,t))/1000);
-
+                
                 if ~lt_2Kkm
                     if lapse < 2
                         lt_2Kkm = true;
                     end
                 else
-                    if lapse > 2 
+                    if lapse > 2
                         tp_lev(x,y,t) = z;
                         tp_pres(x,y,t) = pres(x,y,z,t);
                         break
                     end
                 end
-
-                if pres(x,y,z,t) > 500;
-                break
-                end            
+                
+                if pres(x,y,z,t) > 500
+                    break
+                end
             end
         end
     end
@@ -200,66 +202,68 @@ end
 
 % Considering the weakness of this algorithm, plume is intended to find the
 % points with absurd tropopause pressure and set the tp_lev to be -1 and
-% tp_pres to be 0. In rProfile_WRF, the points with zero pressures will
-% be interpolated.
+% tp_pres to be 0, i.e. not found. This can be interpolated by the calling
+% function if desired.
 plume = false(size(tp_pres));
 
 % search center points along the altitude, locate the adjacent points
 % with sharp changes in tropopause pressure and set the first point as
 % center point in the function find_plume
- for yy = 1:sz_sn
-    for tt = 1:sz_time
-        tp_pres_diff = abs(tp_pres(2:end,yy,tt)-tp_pres(1:end-1,yy,tt));
-        dp_pres = find(tp_pres_diff >= 50);
-    for i = 1:numel(dp_pres)
-        % With some test, quantile(tp_pres_diff,0.7) is always around 0.5 pa.
-       if ~plume(dp_pres(i),yy)
-            tolerance_pres = quantile(tp_pres_diff,0.7);
-            threshold = @(t) abs(t) < tolerance_pres;
-            center_lon = wrf_lon(dp_pres(i),yy);
-            center_lat = wrf_lat(dp_pres(i),yy);  
-            [in_plume] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
-            plume = plume | in_plume;
+for y = 1:sz_sn
+    for t = 1:sz_time
+        tp_pres_diff = abs(tp_pres(2:end,y,t)-tp_pres(1:end-1,y,t));
+        dp_pres = find(tp_pres_diff >= 50); % 50 hPa jump chosen based on 2012 WRF data?
+        for i = 1:numel(dp_pres)
+            % With some test, quantile(tp_pres_diff,0.7) is always around
+            % 0.5 pa. (Pa or hPa?)
+            if ~plume(dp_pres(i),y)
+                tolerance_pres = quantile(tp_pres_diff,0.7);
+                threshold = @(t) abs(t) < tolerance_pres;
+                center_lon = wrf_lon(dp_pres(i),y);
+                center_lat = wrf_lat(dp_pres(i),y);
+                [in_plume] = find_plume(tp_pres, wrf_lon, wrf_lat, threshold, center_lon, center_lat);
+                plume = plume | in_plume;
+            end
         end
     end
-    end    
- end
- 
- 
+end
+
+
 tp_pres(plume) = nan;
 tp_lev(plume) = nan;
 
-% second run of filter: devide the map by 50X30 tails, in each tail find the
-% grid cell that the tropopause pressure is 70hpa larger or lower than the median tropopause pressure,
-% set it to be nan;
+% second run of filter: devide the map by 50X30 chunks, in each chunk find
+% the grid cell that the tropopause pressure is 70hpa larger or lower than
+% the median tropopause pressure, set it to be nan; (Why 70 hPa here, why
+% 50x30 chunks?)
 
- bulk = [50,30];
- s1 = fix(sz_we/bulk(1));
- s2 = fix(sz_sn/bulk(2));
- 
- for i=1:s1
-     for j=1:s2
-         if j ==s2
-             ybulk = bulk(2)*(j-1)+1:max(bulk(2)*j,sz_sn);
-         else
-             ybulk = bulk(2)*(j-1)+1:bulk(2)*j;
-         end
-         if i ==s1
-             xbulk = bulk(1)*(i-1)+1:max(bulk(1)*i,sz_we);
-         else
-             xbulk = bulk(1)*(i-1)+1:bulk(1)*i;
-         end
-         pres_bulk = tp_pres(xbulk,ybulk);
-         median_pres = nanmedian(pres_bulk(:));
-         diff = abs(pres_bulk-median_pres);
-         indx = diff >70;
-         pres_bulk(indx) = nan;
-         tp_pres(xbulk,ybulk) = pres_bulk;
-     end
- end
+bulk = [50,30];
+s1 = fix(sz_we/bulk(1));
+s2 = fix(sz_sn/bulk(2));
+
+for i=1:s1
+    for j=1:s2
+        if j ==s2
+            ybulk = bulk(2)*(j-1)+1:max(bulk(2)*j,sz_sn);
+        else
+            ybulk = bulk(2)*(j-1)+1:bulk(2)*j;
+        end
+        if i ==s1
+            xbulk = bulk(1)*(i-1)+1:max(bulk(1)*i,sz_we);
+        else
+            xbulk = bulk(1)*(i-1)+1:bulk(1)*i;
+        end
+        pres_bulk = tp_pres(xbulk,ybulk);
+        median_pres = nanmedian(pres_bulk(:));
+        diff = abs(pres_bulk-median_pres);
+        indx = diff >70;
+        pres_bulk(indx) = nan;
+        tp_pres(xbulk,ybulk) = pres_bulk;
+    end
+end
 
 tp_pres(isnan(tp_pres)) = 0;
-tp_lev(isnan(tp_lev)) = -1;  
+tp_lev(isnan(tp_lev)) = -1;
 end
 
 
