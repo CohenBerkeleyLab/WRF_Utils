@@ -80,6 +80,6 @@ end
 T = T+300;
 
 % Now convert from potential temperature to absolute temperature
-T = T .* ((P+PB) ./ 1e5) .^ 0.2865;
+T = T .* ((P+PB) ./ 1e5) .^ 0.2864;
 end
 
