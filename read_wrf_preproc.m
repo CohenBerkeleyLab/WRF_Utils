@@ -14,7 +14,7 @@ function [ varargout ] = read_wrf_preproc( wrf_file, quantity, varargin )
 %   precursor variables and converting them to the desired quantity.
 %
 %   VALUE = READ_WRF_PREPROC( WRF_FILE, QUANTITY ) will read QUANTITY from
-%   the WRF_FILE and return the VALUE requested. Allowed strings for
+%   the WRF_FILE and return the VALUE requested. Special strings for
 %   QUANTITY are (case insensitive):
 %       - 't', 'temp', or 'temperature': gives temperature in Kelvin
 %       - 'p', 'pres', or 'pressure': gives pressure in hPa
@@ -23,6 +23,8 @@ function [ varargout ] = read_wrf_preproc( wrf_file, quantity, varargin )
 %       - 'ndens', 'number density': gives number density of air in
 %       molec./cm^3.
 %       - 'no2_ndens': gives NO2 concentration in molec./cm^3
+%   Any other string for QUANTITY will be assumed to be a variable in the
+%   WRF file and read directly.
 %
 %   VALUE = READ_WRF_PREPROC( ___, START, COUNT )
 %   VALUE = READ_WRF_PREPROC( ___, START, COUNT, STRIDE ) will pass START,
@@ -86,6 +88,8 @@ elseif any(strcmpi({'no2_ndens'}, quantity))
         no2_mixing_ratio = convert_units(no2_mixing_ratio, no2_units, 'ppp');
         varargout{1} = no2_mixing_ratio .* ndens_air;
     end
+else
+    varargout{1} = ncread(wrf_file, quantity, varargin{:});
 end
 
 
