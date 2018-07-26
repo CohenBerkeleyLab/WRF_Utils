@@ -1,4 +1,4 @@
-function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
+function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, varargin )
 %FIND_WRF_TROPOPAUSE Find the model level where the tropopause is
 %   The WRF preprocessor determines the tropopause level in the model as
 %   being where the average lapse rate over 3 model layers is < 2 K/km.
@@ -20,6 +20,14 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %   [ __ ] = FIND_WRF_TROPOPAUSE( WRF_INFO, true ) if the tropopause isn't
 %   found, assume that it lies above the model domain. This will return the
 %   top model layer and pressure for those locations.
+%
+%   Additional parameters:
+%
+%       'error_if_missing_units' - by default, this checks the units in the
+%       WRF file it is reading from. However, in some cases, units might
+%       not have been stored in the output, so setting this parameter to
+%       false allowed you to override that and assume the units are
+%       correct.
 %
 %   This function works by starting at the top of each vertical profile and
 %   moving downwards, looking for the last group of 3 model layers that
@@ -56,12 +64,14 @@ function [ tp_lev , tp_pres] = find_wrf_tropopause( wrf_info, assume_top )
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
 E = JLLErrors;
+p = advInputParser;
+p.addOptional('assume_top', false);
+p.addParameter('error_if_missing_units', true);
+p.parse(varargin{:});
+pout = p.Results;
 
-vars = {wrf_info.Variables.Name};
-
-if ~exist('assume_top','var')
-    assume_top = false;
-end
+assume_top = pout.assume_top;
+error_if_missing_units = pout.error_if_missing_units;
 
 if (~islogical(assume_top) && ~isnumeric(assume_top)) || ~isscalar(assume_top)
     E.badinput('assume_top must be a scalar logical or numeric value, or be left unspecified');
@@ -96,9 +106,9 @@ tp_pres = zeros(sz_we, sz_sn, sz_time);
 % rate averaged over 3 bins and look for the lowest one that meets the
 % criteria.
 
-T = read_wrf_preproc(wrf_info.Filename, 'temperature');
-z_lev = read_wrf_preproc(wrf_info.Filename, 'elevation');
-pres = read_wrf_preproc(wrf_info.Filename, 'pressure');
+T = read_wrf_preproc(wrf_info.Filename, 'temperature', 'error_if_missing_units', error_if_missing_units);
+z_lev = read_wrf_preproc(wrf_info.Filename, 'elevation', 'error_if_missing_units', error_if_missing_units);
+pres = read_wrf_preproc(wrf_info.Filename, 'pressure', 'error_if_missing_units', error_if_missing_units);
 
 wrf_lon = ncread(wrf_info.Filename,'XLONG');
 wrf_lat = ncread(wrf_info.Filename,'XLAT');

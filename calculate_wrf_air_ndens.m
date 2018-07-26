@@ -42,12 +42,13 @@ end
 %%%%% MAIN FUNCTION %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%
 
+% avogadro's constant, molecules / mole.
 Av = 6.022e23;
 
 % Need absolute temperature
 T = convert_wrf_temperature(T, P, PB);
 
-% Now apply ideal gas law
+% Now apply ideal gas law. 8.314 = gas constant in m^3 Pa K^-1 mol^-1
 ndens = ((P+PB) .* Av) ./ (8.314 .* T);
 % convert from molec./m^3 to molec./cm^3
 ndens = ndens*1e-6;

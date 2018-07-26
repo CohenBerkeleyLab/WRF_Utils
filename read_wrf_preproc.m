@@ -1,6 +1,6 @@
 function [ varargout ] = read_wrf_preproc( wrf_file, quantity, varargin )
 %READ_WRF_PREPROC Helper function to read sometimes preprocessed WRF variables
-%   
+%
 %   Certain common physical quantities (like temperature, pressure, and
 %   elevation) can be computed from WRF output, but are not given directly.
 %   I have previously written code in the NCL programming language that can
@@ -31,56 +31,100 @@ function [ varargout ] = read_wrf_preproc( wrf_file, quantity, varargin )
 %   COUNT, and (optionally) STRIDE to the various NCREAD() calls, allowing
 %   you to only read a subset of the data.
 
+p = advInputParser;
+p.addParameter('error_if_missing_units', true);
+p.KeepUnmatched = true;
+
+p.parse(varargin{:});
+pout = p.Results;
+
+error_if_missing_units = pout.error_if_missing_units;
+read_args = p.Unmatched;
+
 wi = ncinfo(wrf_file);
 wrf_vars = {wi.Variables.Name};
 if any(strcmpi({'t','temp','temperature'}, quantity))
     if ismember('TT', wrf_vars)
-        varargout{1} = ncread(wrf_file, 'TT', varargin{:}); % assume T is always in Kelvin
+        varargout{1} = ncread(wrf_file, 'TT', read_args{:}); % assume T is always in Kelvin
+        % My convert_units function isn't set up to handle additive
+        % offsets, so it's difficult at the moment to convert between other
+        % units of temperature and Kelvin, so just verify that temperature
+        % is given in Kelvin
+        check_units('TT', 'K');
     else
-        wrf_T = ncread(wrf_file, 'T', varargin{:});
-        wrf_P = ncread(wrf_file, 'P', varargin{:});
-        wrf_PB = ncread(wrf_file, 'PB', varargin{:});
+        wrf_T = ncread(wrf_file, 'T', read_args{:});
+        wrf_P = ncread(wrf_file, 'P', read_args{:});
+        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
+        % convert_wrf_temperature assumes units of K, Pa, and Pa
+        % respectively. Again, converting temperature isn't possible right
+        % now. We could convert pressure to Pa, but if this is a regular
+        % WRF file, there's no reason to expect that pressure and
+        % base-state pressure won't be in Pa. This is just a double check.
+        check_units('T','K');
+        check_units('P','Pa');
+        check_units('PB','Pa');
         varargout{1} = convert_wrf_temperature(wrf_T, wrf_P, wrf_PB);
     end
 elseif any(strcmpi({'p','pres','pressure'}, quantity))
+    % We want to return pressure in hPa, so since we need to convert the
+    % regular P+PB value, we'll just always convert the units here.
     if ismember('pres', wrf_vars)
         pres = ncread(wrf_file, 'pres');
-        pres_units = ncreadatt(wrf_file, 'pres', 'units');
+        pres_units = ncreadatt_default(wrf_file, 'pres', 'units', 'hPa', 'fatal_if_missing', error_if_missing_units);
         varargout{1} = convert_units(pres, pres_units, 'hPa');
     else
-        wrf_P = ncread(wrf_file, 'P', varargin{:});
-        wrf_PB = ncread(wrf_file, 'PB', varargin{:});
-        p_units = ncreadatt(wrf_file, 'P', 'units');
-        pb_units = ncreadatt(wrf_file, 'PB', 'units');
+        wrf_P = ncread(wrf_file, 'P', read_args{:});
+        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
+        p_units = ncreadatt_default(wrf_file, 'P', 'units','Pa','fatal_if_missing',error_if_missing_units);
+        pb_units = ncreadatt_default(wrf_file, 'PB', 'units','Pa','fatal_if_missing',error_if_missing_units);
         wrf_P = convert_units(wrf_P, p_units, 'hPa');
         wrf_PB = convert_units(wrf_PB, pb_units, 'hPa');
         varargout{1} = wrf_P + wrf_PB;
     end
 elseif any(strcmpi({'z','elev','elevation'}, quantity))
+    % We could convert these from whatever to meters, but again there's no
+    % reason to assume that they will be anything other than meters.
     if ismember('z', wrf_vars)
-        varargout{1} = ncread(wrf_file, 'z', varargin{:});
-        varargout{2} = ncread(wrf_file, 'zlev', varargin{:});
+        check_units('z','m');
+        check_units('zlev','m');
+        varargout{1} = ncread(wrf_file, 'z', read_args{:});
+        varargout{2} = ncread(wrf_file, 'zlev', read_args{:});
     else
-        z = calculate_wrf_altitude(wrf_file, varargin{:});
+        z = calculate_wrf_altitude(wrf_file, read_args{:});
         zlev = diff(z,1,3);
         varargout = {z, zlev};
     end
 elseif any(strcmpi({'ndens','number density'}, quantity))
     if ismember('ndens', wrf_vars)
-        varargout{1} = ncread(wrf_file, 'ndens', varargin{:});
+        check_units('ndens','molec./cm^3');
+        varargout{1} = ncread(wrf_file, 'ndens', read_args{:});
     else
-        wrf_T = ncread(wrf_file, 'T', varargin{:});
-        wrf_P = ncread(wrf_file, 'P', varargin{:});
-        wrf_PB = ncread(wrf_file, 'PB', varargin{:});
+        % calculate_wrf_air_ndens assumes that these are in K, Pa, and Pa,
+        % respectively.
+        check_units('T','K');
+        check_units('P','Pa');
+        check_units('PB','Pa');
+        
+        wrf_T = ncread(wrf_file, 'T', read_args{:});
+        wrf_P = ncread(wrf_file, 'P', read_args{:});
+        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
+        
         varargout{1} = calculate_wrf_air_ndens(wrf_T, wrf_P, wrf_PB);
     end
 elseif any(strcmpi({'no2_ndens'}, quantity))
     if ismember('no2_ndens', wrf_vars)
-        varargout{1} = ncread(wrf_file, 'no2_ndens', varargin{:});
+        check_units('no2_ndens', 'molec./cm^3');
+        varargout{1} = ncread(wrf_file, 'no2_ndens', read_args{:});
     else
-        wrf_T = ncread(wrf_file, 'T', varargin{:});
-        wrf_P = ncread(wrf_file, 'P', varargin{:});
-        wrf_PB = ncread(wrf_file, 'PB', varargin{:});
+        % calculate_wrf_air_ndens assumes that these are in K, Pa, and Pa,
+        % respectively.
+        check_units('T','K');
+        check_units('P','Pa');
+        check_units('PB','Pa');
+        wrf_T = ncread(wrf_file, 'T', read_args{:});
+        wrf_P = ncread(wrf_file, 'P', read_args{:});
+        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
+        
         ndens_air = calculate_wrf_air_ndens(wrf_T, wrf_P, wrf_PB);
         
         no2_mixing_ratio = ncread(wrf_file, 'no2', varargin{:});
@@ -93,5 +137,27 @@ else
 end
 
 
-end
 
+
+    function check_units(wrf_var, expected_unit)
+        try
+            unit_in_file = ncreadatt(wrf_file, wrf_var, 'units');
+        catch err
+            if strcmp(err.identifier, 'MATLAB:imagesci:netcdf:libraryFailure')
+                if error_if_missing_units
+                    error('read_wrf_preproc:check_units:no_units', 'No "units" attribute for variable "%s" in %s', wrf_var, wrf_file);
+                else
+                    unit_in_file = expected_unit;
+                end
+            else
+                rethrow(err)
+            end
+        end
+        
+        if ~strcmp(unit_in_file, expected_unit)
+            error('read_wrf_preproc:check_units:wrong_unit', 'Expected units of "%s" for "%s" in %s; got "%s" instead', expected_unit, wrf_var, wrf_file, unit_in_file);
+        end
+        
+    end
+
+end
