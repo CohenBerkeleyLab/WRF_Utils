@@ -94,6 +94,23 @@ elseif any(strcmpi({'z','elev','elevation'}, quantity))
         zlev = diff(z,1,3);
         varargout = {z, zlev};
     end
+elseif any(strcmpi({'z_center'}, quantity))
+    if ismember('z_center', wrf_vars)
+        check_units('z_center', 'm');
+        varargout{1} = ncread(wrf_file, 'z_center', read_args{:});
+    else
+        z = read_wrf_preproc(wrf_file, 'z', varargin{:});
+        % Verify that the third dimension of the z array is
+        % "bottom_top_stag", otherwise this calculation is wrong
+        bottom_top_stag = get_ncdf_dim(wrf_file, 'bottom_top_stag');
+        if isempty(bottom_top_stag)
+            E.callError('wrong_dim_length', 'There is no bottom_top_stag dimension in the file "%s", therefore cannot verify that z is the proper dimensions to calculate z_center');
+        elseif size(z,3) ~= bottom_top_stag.Length
+            E.callError('wrong_dim_length', 'z was not returned with the expected third dimension (bottom_top_stag), cannot compute %s', quantity);
+        end
+        
+        varargout{1} = (z(:,:,1:end-1,:)+z(:,:,2:end,:))/2;
+    end
 elseif any(strcmpi({'ndens','number density'}, quantity))
     if ismember('ndens', wrf_vars)
         check_units('ndens','molec./cm^3');
@@ -160,4 +177,15 @@ end
         
     end
 
+end
+
+function dim = get_ncdf_dim(filename, dim_name)
+info = ncinfo(filename);
+all_dims = {info.Dimensions.Name};
+xx = strcmp(all_dims, dim_name);
+if sum(xx) == 1
+    dim = info.Variables(xx).Dimensions(dim_index);
+else
+    dim = [];
+end
 end
