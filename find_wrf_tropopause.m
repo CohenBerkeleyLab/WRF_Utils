@@ -107,14 +107,13 @@ tp_pres = zeros(sz_we, sz_sn, sz_time);
 % criteria.
 
 T = read_wrf_preproc(wrf_info.Filename, 'temperature', 'error_if_missing_units', error_if_missing_units);
-z_lev = read_wrf_preproc(wrf_info.Filename, 'elevation', 'error_if_missing_units', error_if_missing_units);
+% read_wrf_preproc will convert from staggered to centered z levels if
+% necessary
+z_lev = read_wrf_preproc(wrf_info.Filename, 'z_center', 'error_if_missing_units', error_if_missing_units);
 pres = read_wrf_preproc(wrf_info.Filename, 'pressure', 'error_if_missing_units', error_if_missing_units);
 
 wrf_lon = ncread(wrf_info.Filename,'XLONG');
 wrf_lat = ncread(wrf_info.Filename,'XLAT');
-% Since T is defined at the layer center and z the edges (staggered
-% coordinates) let's convert z to non-staggered coordinates
-z_lev = (z_lev(:,:,2:end,:)+z_lev(:,:,1:end-1,:))/2;
 
 for x = 1:sz_we
     for y = 1:sz_sn
