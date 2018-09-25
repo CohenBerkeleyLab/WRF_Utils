@@ -184,7 +184,7 @@ info = ncinfo(filename);
 all_dims = {info.Dimensions.Name};
 xx = strcmp(all_dims, dim_name);
 if sum(xx) == 1
-    dim = info.Variables(xx).Dimensions(dim_index);
+    dim = info.Dimensions(xx);
 else
     dim = [];
 end
