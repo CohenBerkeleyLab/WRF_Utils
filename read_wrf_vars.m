@@ -143,8 +143,34 @@ var_sizes = cell(1,numel(varnames)); % used to check each file's variables
 % First figure out how many dimensions each variable has; we'll need this
 % whether or not force_dims is set to determine which dimension to
 % concatenate along.
+temperature_strs = {'t','temp','temperature'};
+pressure_strs = {'p','pres','pressure'};
+elevation_strs = {'z','elev','elevation'};
+elev_center_strs = {'z_center'};
+ndens_strs = {'ndens','number density'};
+no2_ndens_strs = {'no2_ndens'};
+
 for a=1:numel(varnames)
-    vv = strcmp(varnames{a}, wrf_vars);
+    % Special cases are the precalculated variables available in the subset
+    % files. We use aliases for those when loading, so first see if the actual
+    % variable we need exists.
+    if any(strcmpi(temperature_strs, varnames{a}))
+        var_for_size = 'TT';
+    elseif any(strcmpi(pressure_strs, varnames{a}))
+        var_for_size = 'pres';
+    elseif any(strcmpi(elevation_strs, varnames{a}))
+        var_for_size = 'z';
+    elseif any(strcmpi(elev_center_strs, varnames{a}))
+        var_for_size = 'P'; % will remove the stagger, so don't use z
+    elseif any(strcmpi(ndens_strs, varnames{a}))
+        var_for_size = 'ndens';
+    elseif any(strcmpi(no2_ndens_strs, varnames{a}))
+        var_for_size = 'no2_ndens';
+    else
+        var_for_size = varnames{a};
+    end
+
+    vv = strcmp(var_for_size, wrf_vars);
     if sum(vv) < 1
         % If we can't find the variable, it might be a preprocessed
         % variable that will be computed by read_wrf_preproc. So here we'll
@@ -152,15 +178,17 @@ for a=1:numel(varnames)
         % we can get the size from. I'm being a bit lazy and not checking
         % that these do exist and that they are not multiply defined. Also,
         % if read_wrf_preproc gets updated, this will need updated too.
-        if any(strcmpi({'t','temp','temperature'}, varnames{a}))
+        if any(strcmpi(temperature_strs, varnames{a}))
             vv = strcmp('T', wrf_vars);
-        elseif any(strcmpi({'p','pres','pressure'}, varnames{a}))
+        elseif any(strcmpi(pressure_strs, varnames{a}))
             vv = strcmp('P', wrf_vars);
-        elseif any(strcmpi({'z','elev','elevation'}, varnames{a}))
+        elseif any(strcmpi(elevation_strs, varnames{a}))
             vv = strcmp('PH', wrf_vars);
-        elseif any(strcmpi({'ndens','number density'}, varnames{a}))
+        elseif any(strcmp(elev_center_strs, varnames{a}))
+            vv = strcmp('PH', wrf_vars);
+        elseif any(strcmpi(ndens_strs, varnames{a}))
             vv = strcmp('P', wrf_vars);
-        elseif any(strcmpi({'no2_ndens'}, varnames{a}))
+        elseif any(strcmpi(no2_ndens_strs, varnames{a}))
             vv = strcmp('no2', wrf_vars);
         else
             E.callError('var_not_found','Variable %s cannot be found in the first WRF file',varnames{a})
