@@ -116,33 +116,14 @@ elseif any(strcmpi({'ndens','number density'}, quantity))
         check_units('ndens','molec./cm^3');
         varargout{1} = ncread(wrf_file, 'ndens', read_args{:});
     else
-        % calculate_wrf_air_ndens assumes that these are in K, Pa, and Pa,
-        % respectively.
-        check_units('T','K');
-        check_units('P','Pa');
-        check_units('PB','Pa');
-        
-        wrf_T = ncread(wrf_file, 'T', read_args{:});
-        wrf_P = ncread(wrf_file, 'P', read_args{:});
-        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
-        
-        varargout{1} = calculate_wrf_air_ndens(wrf_T, wrf_P, wrf_PB);
+        varargout{1} = calculate_wrf_air_ndens(wrf_file);
     end
 elseif any(strcmpi({'no2_ndens'}, quantity))
     if ismember('no2_ndens', wrf_vars)
         check_units('no2_ndens', 'molec./cm^3');
         varargout{1} = ncread(wrf_file, 'no2_ndens', read_args{:});
     else
-        % calculate_wrf_air_ndens assumes that these are in K, Pa, and Pa,
-        % respectively.
-        check_units('T','K');
-        check_units('P','Pa');
-        check_units('PB','Pa');
-        wrf_T = ncread(wrf_file, 'T', read_args{:});
-        wrf_P = ncread(wrf_file, 'P', read_args{:});
-        wrf_PB = ncread(wrf_file, 'PB', read_args{:});
-        
-        ndens_air = calculate_wrf_air_ndens(wrf_T, wrf_P, wrf_PB);
+        ndens_air = calculate_wrf_air_ndens(wrf_file);
         
         no2_mixing_ratio = ncread(wrf_file, 'no2', varargin{:});
         no2_units = ncreadatt(wrf_file, 'no2', 'units');
@@ -152,8 +133,6 @@ elseif any(strcmpi({'no2_ndens'}, quantity))
 else
     varargout{1} = ncread(wrf_file, quantity, varargin{:});
 end
-
-
 
 
     function check_units(wrf_var, expected_unit)

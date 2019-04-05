@@ -161,7 +161,7 @@ for a=1:numel(varnames)
     elseif any(strcmpi(elevation_strs, varnames{a}))
         var_for_size = 'z';
     elseif any(strcmpi(elev_center_strs, varnames{a}))
-        var_for_size = 'P'; % will remove the stagger, so don't use z
+        var_for_size = 'pres'; % will remove the stagger, so don't use z
     elseif any(strcmpi(ndens_strs, varnames{a}))
         var_for_size = 'ndens';
     elseif any(strcmpi(no2_ndens_strs, varnames{a}))
